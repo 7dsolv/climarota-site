@@ -127,6 +127,18 @@ const elements = {
   pntGnssRmse: document.querySelector("#pnt-gnss-rmse"),
   pntFusedRmse: document.querySelector("#pnt-fused-rmse"),
   pntGnssFixes: document.querySelector("#pnt-gnss-fixes"),
+  eventName: document.querySelector("#event-name"),
+  eventCity: document.querySelector("#event-city"),
+  eventDate: document.querySelector("#event-date"),
+  searchEvents: document.querySelector("#search-events"),
+  locateEvent: document.querySelector("#locate-event"),
+  eventSearchResults: document.querySelector("#event-search-results"),
+  eventStatus: document.querySelector("#event-status"),
+  shareEventLocation: document.querySelector("#share-event-location"),
+  clearEventLocation: document.querySelector("#clear-event-location"),
+  eventShareBox: document.querySelector("#event-share-box"),
+  eventShareLink: document.querySelector("#event-share-link"),
+  copyEventShare: document.querySelector("#copy-event-share"),
   historyConsent: document.querySelector("#history-consent"),
   qualityScore: document.querySelector("#quality-score"),
   historyList: document.querySelector("#history-list"),
@@ -164,6 +176,8 @@ let pendingAceinnaTrajectoryFile = null;
 let aceinnaTrajectoryLayer = null;
 let pntSimulationResult = null;
 let pntSimulationLayers = null;
+let eventPoint = null;
+let eventMarker = null;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -744,6 +758,9 @@ function setFieldMode(mode) {
       ? "Clique no mapa para adicionar vértices; conclua com dois ou mais pontos."
       : "Clique no mapa para delimitar a área; conclua com três ou mais vértices.";
     elements.measurementStatus.hidden = false;
+  } else if (mode === "event") {
+    elements.measurementStatus.textContent = "Clique no mapa para marcar e compartilhar um ponto fixo de encontro. Isso não ativa rastreamento de pessoas.";
+    elements.measurementStatus.hidden = false;
   } else if (elements.measurementStatus.textContent.startsWith("Clique no mapa")) {
     elements.measurementStatus.hidden = true;
   }
@@ -824,6 +841,18 @@ function completeMeasurement() {
 
 function handleMapClick(event) {
   if (!fieldMode) return;
+  if (fieldMode === "event") {
+    setEventPoint({
+      name: elements.eventName.value.trim() || "Ponto de encontro",
+      venue: elements.eventCity.value.trim() || "Local escolhido no mapa",
+      latitude: event.latlng.lat,
+      longitude: event.latlng.lng,
+      date: elements.eventDate.value,
+    });
+    elements.measurementStatus.hidden = true;
+    setFieldMode(null);
+    return;
+  }
   if (fieldMode === "site") {
     pendingSiteCoordinates = {
       latitude: event.latlng.lat,
@@ -841,6 +870,114 @@ function handleMapClick(event) {
     measurementCoordinates.push(event.latlng);
     updateLiveMeasurement();
   }
+}
+
+function setEventPoint(event) {
+  const point = window.ClimaRotaEventPlanner.validateEvent(event);
+  eventPoint = point;
+  if (eventMarker && map) map.removeLayer(eventMarker);
+  const popup = document.createElement("span");
+  popup.textContent = `${point.name} · ponto de encontro`;
+  eventMarker = L.marker([point.latitude, point.longitude]).addTo(map).bindPopup(popup);
+  map.setView([point.latitude, point.longitude], 16);
+  elements.eventCity.value = point.venue;
+  elements.shareEventLocation.disabled = false;
+  elements.clearEventLocation.hidden = false;
+  elements.eventShareBox.hidden = true;
+  elements.eventStatus.textContent = `Ponto definido: ${point.venue} · ${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}.`;
+}
+
+function searchEvents() {
+  const links = window.ClimaRotaEventPlanner.buildSearchLinks(
+    elements.eventName.value,
+    elements.eventCity.value,
+    elements.eventDate.value,
+  );
+  elements.eventSearchResults.replaceChildren();
+  for (const result of links) {
+    const link = document.createElement("a");
+    link.href = result.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = result.label;
+    elements.eventSearchResults.append(link);
+  }
+  elements.eventSearchResults.hidden = false;
+  elements.eventStatus.textContent = "Resultados de busca externos; o ClimaRota não confirma disponibilidade, autenticidade ou autorização do vendedor.";
+}
+
+async function locateEvent() {
+  if (!elements.eventName.value.trim()) throw new Error("Informe o nome do evento ou artista.");
+  if (!elements.eventCity.value.trim()) throw new Error("Informe a cidade ou o local do evento.");
+  const target = await findDestination(elements.eventCity.value.trim());
+  setEventPoint({
+    name: elements.eventName.value,
+    venue: target.name,
+    latitude: target.lat,
+    longitude: target.lon,
+    date: elements.eventDate.value,
+  });
+  try {
+    await calculateRoute(target);
+  } catch (error) {
+    showNotice(`O local foi encontrado, mas a rota ou parte da previsão falhou: ${error.message}`, true);
+  }
+}
+
+function prepareEventShare() {
+  if (!eventPoint) throw new Error("Marque o ponto do evento no mapa antes de criar o link.");
+  const shareRecord = {
+    ...eventPoint,
+    name: elements.eventName.value.trim() || eventPoint.name,
+    date: elements.eventDate.value,
+  };
+  const shareUrl = window.ClimaRotaEventPlanner.createMeetupUrl(window.location.href, shareRecord);
+  elements.eventShareLink.value = shareUrl;
+  elements.eventShareBox.hidden = false;
+  elements.eventStatus.textContent = "Link preparado. Ele contém um ponto fixo no endereço, não acompanha pessoas. Envie apenas ao grupo desejado.";
+}
+
+async function copyEventShare() {
+  if (!elements.eventShareLink.value) throw new Error("Prepare o link do ponto antes de copiá-lo.");
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(elements.eventShareLink.value);
+      elements.eventStatus.textContent = "Link copiado. Compartilhe-o somente com as pessoas do grupo.";
+      return;
+    } catch {
+      elements.eventShareLink.focus();
+      elements.eventShareLink.select();
+      elements.eventStatus.textContent = "A cópia automática foi bloqueada. O link está selecionado para copiar manualmente.";
+      return;
+    }
+  }
+  elements.eventShareLink.focus();
+  elements.eventShareLink.select();
+  elements.eventStatus.textContent = "A cópia automática não está disponível. O link está selecionado para copiar manualmente.";
+}
+
+function clearEventPoint() {
+  if (eventMarker && map) map.removeLayer(eventMarker);
+  eventPoint = null;
+  eventMarker = null;
+  elements.shareEventLocation.disabled = true;
+  elements.clearEventLocation.hidden = true;
+  elements.eventShareBox.hidden = true;
+  elements.eventShareLink.value = "";
+  if (window.location.hash.startsWith("#meetup=")) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
+  elements.eventStatus.textContent = "Ponto do evento removido desta sessão.";
+}
+
+function restoreSharedEventPoint() {
+  const sharedEvent = window.ClimaRotaEventPlanner.readMeetupUrl(window.location.href);
+  if (!sharedEvent) return;
+  elements.eventName.value = sharedEvent.name;
+  elements.eventCity.value = sharedEvent.venue;
+  elements.eventDate.value = sharedEvent.date;
+  setEventPoint(sharedEvent);
+  elements.eventStatus.textContent = `Ponto de encontro recebido: ${sharedEvent.name} · posição fixa compartilhada; não há localização ao vivo.`;
 }
 
 function renderFieldSites() {
@@ -1160,6 +1297,43 @@ elements.destinationForm.addEventListener("submit", async (event) => {
 
 elements.locateButton.addEventListener("click", locateUser);
 elements.clearRoute.addEventListener("click", clearRoute);
+elements.searchEvents.addEventListener("click", () => {
+  try {
+    searchEvents();
+  } catch (error) {
+    elements.eventStatus.textContent = `Não foi possível pesquisar: ${error.message}`;
+    showNotice(`Verifique os dados do evento: ${error.message}`, true);
+  }
+});
+elements.locateEvent.addEventListener("click", async () => {
+  elements.locateEvent.disabled = true;
+  elements.eventStatus.textContent = "Localizando o endereço do evento…";
+  try {
+    await locateEvent();
+  } catch (error) {
+    elements.eventStatus.textContent = `Local do evento não localizado: ${error.message}`;
+    showNotice(`Não foi possível localizar o evento: ${error.message}`, true);
+  } finally {
+    elements.locateEvent.disabled = false;
+  }
+});
+elements.shareEventLocation.addEventListener("click", () => {
+  try {
+    prepareEventShare();
+    showNotice("");
+  } catch (error) {
+    showNotice(`Não foi possível preparar o ponto de encontro: ${error.message}`, true);
+  }
+});
+elements.copyEventShare.addEventListener("click", async () => {
+  try {
+    await copyEventShare();
+    if (navigator.clipboard?.writeText) showNotice("Link do ponto de encontro copiado.");
+  } catch (error) {
+    showNotice(`Não foi possível copiar o link: ${error.message}`, true);
+  }
+});
+elements.clearEventLocation.addEventListener("click", clearEventPoint);
 elements.runPntSimulation.addEventListener("click", () => {
   elements.runPntSimulation.disabled = true;
   elements.pntStatus.textContent = "Calculando trajetória sintética local…";
@@ -1456,8 +1630,9 @@ elements.clearHistory.addEventListener("click", () => {
 
 try {
   initializeMap();
+  restoreSharedEventPoint();
 } catch (error) {
-  showNotice(error.message, true);
+  showNotice(`Não foi possível iniciar o mapa ou abrir o ponto compartilhado: ${error.message}`, true);
 }
 try {
   selectWeatherAuthority();

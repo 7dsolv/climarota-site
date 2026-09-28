@@ -245,6 +245,19 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .pnt-metrics small { color: #91a198; font-size: 9px; }
 .pnt-metrics strong { color: #e9f0eb; font-size: 12px; }
 .pnt-disclaimer { color: #8f9e94; }
+.event-panel { padding: 17px 18px; }
+.event-description, .event-share-box p { margin: 10px 0 0; color: #aab9ae; font-size: 10px; line-height: 1.55; }
+.event-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .7fr); gap: 9px; margin-top: 9px; }
+.event-form-grid label { display: grid; gap: 5px; color: #bac8bd; font-size: 9px; font-weight: 600; }
+.event-form-grid .site-input { min-width: 0; min-height: 35px; color-scheme: dark; font-size: 10px; }
+.event-status { margin: 10px 0 0; color: #c3d0c6; font-size: 9px; line-height: 1.55; }
+.event-search-results { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.event-search-results a { padding: 6px 8px; border: 1px solid rgba(198, 243, 107, .2); border-radius: 7px; color: var(--lime); font-size: 9px; text-decoration: none; }
+.event-search-results a:hover { background: rgba(198, 243, 107, .07); }
+.event-share-box { display: grid; gap: 7px; margin-top: 9px; padding: 9px; border: 1px solid rgba(224, 239, 229, .07); border-radius: 9px; background: rgba(255, 255, 255, .025); }
+.event-share-box p { margin: 0; color: #f0cc84; }
+.event-share-box .site-input { min-height: 35px; font-size: 9px; }
+.event-panel button:disabled { cursor: not-allowed; opacity: .55; }
 
 .current-weather { padding: 19px 20px 16px; }
 .operations-panel, .authority-panel, .storm-safety-panel { padding: 17px 18px; }
@@ -377,6 +390,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   .map-actions button { flex: 0 0 auto; min-height: 29px; padding: 0 7px; font-size: 9px; }
   .map-hint { display: none; }
   .map-layer-row { margin-top: 3px; }
+  .event-form-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 390px) {

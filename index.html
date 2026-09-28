@@ -23,6 +23,7 @@
     <script src="mins-trajectory.js" defer></script>
     <script src="aceinna-track.js" defer></script>
     <script src="pnt-simulator.js" defer></script>
+    <script src="event-planner.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -55,6 +56,7 @@
               <button type="button" data-map-mode="site" aria-pressed="false">＋ Ponto de campo</button>
               <button type="button" data-map-mode="line" aria-pressed="false">↔ Medir linha</button>
               <button type="button" data-map-mode="area" aria-pressed="false">⬡ Medir área</button>
+              <button type="button" data-map-mode="event" aria-pressed="false">⚑ Ponto de encontro</button>
               <button type="button" id="import-mins-trajectory">Importar trilha MINS</button>
               <button type="button" id="clear-mins-trajectory" hidden>Limpar trilha MINS</button>
               <button type="button" id="import-aceinna-trajectory">Importar CSV GNSS/INS</button>
@@ -144,6 +146,40 @@
             <div class="field-site-list" id="field-site-list"></div>
             <button class="text-button" id="clear-sites" type="button" hidden>Apagar anotações deste navegador</button>
             <button class="text-button" id="export-sites" type="button" hidden>Exportar anotações</button>
+          </section>
+
+          <section class="panel event-panel" aria-labelledby="event-title">
+            <div class="section-heading">
+              <div><span class="eyebrow">MODO EVENTO</span><h2 id="event-title">Shows e encontros</h2></div>
+              <span class="forecast-label">PLANEJAR</span>
+            </div>
+            <p class="event-description">Pesquise eventos e ingressos, encontre o local, veja a rota e compartilhe um ponto fixo de encontro com seu grupo.</p>
+            <label class="form-label" for="event-name">Show ou evento</label>
+            <input class="site-input" id="event-name" maxlength="100" placeholder="Ex.: festival, artista ou jogo">
+            <div class="event-form-grid">
+              <label for="event-city">Cidade ou região
+                <input class="site-input" id="event-city" maxlength="100" placeholder="Ex.: São Paulo, SP">
+              </label>
+              <label for="event-date">Data (opcional)
+                <input class="site-input" id="event-date" type="date">
+              </label>
+            </div>
+            <div class="pnt-actions">
+              <button class="dialog-submit" id="search-events" type="button">Buscar eventos e ingressos</button>
+              <button class="pnt-secondary-button" id="locate-event" type="button">Localizar e traçar rota</button>
+            </div>
+            <div class="event-search-results" id="event-search-results" aria-live="polite" hidden></div>
+            <p class="event-status" id="event-status" role="status" aria-live="polite">Pesquisas abrem em sites externos; confirme organizador, local e vendedor antes de comprar.</p>
+            <div class="pnt-actions">
+              <button class="pnt-secondary-button" id="share-event-location" type="button" disabled>Preparar link do ponto</button>
+              <button class="pnt-secondary-button" id="clear-event-location" type="button" hidden>Remover ponto</button>
+            </div>
+            <div class="event-share-box" id="event-share-box" hidden>
+              <p>Este link inclui o nome do evento e as coordenadas do ponto fixo no endereço. Compartilhe somente com quem deve recebê-lo; ele não mostra posições ao vivo.</p>
+              <label class="sr-only" for="event-share-link">Link do ponto de encontro</label>
+              <input class="site-input" id="event-share-link" type="url" readonly>
+              <button class="pnt-secondary-button" id="copy-event-share" type="button">Copiar link</button>
+            </div>
           </section>
 
           <section class="panel pnt-panel" aria-labelledby="pnt-title">
