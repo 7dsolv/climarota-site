@@ -335,6 +335,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .analysis-badge { padding: 5px 8px; border: 1px solid rgba(198, 243, 107, .22); border-radius: 7px; color: var(--lime); font-size: 9px; font-weight: 700; }
 .analysis-summary { margin: 13px 0 10px; color: #d2ded5; font-size: 11px; line-height: 1.5; }
 .route-weather-list { display: grid; gap: 6px; }
+.route-options-panel { padding: 17px 18px; }
+.route-options-note { margin: 10px 0 0; color: #9eaea3; font-size: 9px; line-height: 1.5; }
+.route-options-list { display: grid; gap: 7px; margin-top: 11px; }
+.route-option { display: grid; gap: 4px; width: 100%; padding: 9px 10px; border: 1px solid rgba(224, 239, 229, .08); border-radius: 9px; background: rgba(255, 255, 255, .025); color: #dce7de; text-align: left; cursor: pointer; }
+.route-option[aria-pressed="true"] { border-color: rgba(198, 243, 107, .48); background: rgba(198, 243, 107, .075); }
+.route-option:hover { border-color: rgba(198, 243, 107, .3); }
+.route-option strong { font-size: 11px; }
+.route-option > span { color: #dce7de; font-size: 10px; }
+.route-option small { color: #aab9ae; font-size: 9px; line-height: 1.4; }
+.route-option .route-option-badges { color: var(--lime); }
+.route-options-panel [hidden] { display: none; }
 .route-weather-row { display: grid; grid-template-columns: 43px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid rgba(224, 239, 229, .045); border-radius: 9px; background: rgba(255, 255, 255, .025); }
 .route-weather-distance { color: #a7b6ac; font-size: 10px; font-weight: 700; }
 .route-weather-conditions { color: #dce6de; font-size: 10px; line-height: 1.4; }
@@ -397,7 +408,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   .brand { font-size: 19px; }
   .gps-button, .track-button { gap: 4px; padding: 0 6px; font-size: 9px; }
   .map-column { min-height: 390px; }
-  .forecast-panel, .destination-weather, .route-analysis, .history-panel { padding: 14px 12px; }
+  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel { padding: 14px 12px; }
   .operations-panel, .authority-panel, .storm-safety-panel { padding: 14px 12px; }
   .route-weather-row { grid-template-columns: 35px minmax(0, 1fr); gap: 7px; }
   .route-risk { grid-column: 2; justify-self: start; }

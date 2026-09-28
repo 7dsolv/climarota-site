@@ -96,10 +96,27 @@
   }
 
   async function analyzeRoute(geometry, durationSeconds, departureTimeMs = Date.now()) {
-    if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
-      throw new Error("A duração estimada da rota é inválida.");
+    const [samples] = await analyzeRoutes(
+      [{ geometry, durationSeconds }],
+      departureTimeMs,
+    );
+    return samples;
+  }
+
+  async function analyzeRoutes(routes, departureTimeMs = Date.now()) {
+    if (!Array.isArray(routes) || routes.length < 1 || routes.length > 3) {
+      throw new Error("A comparação deve conter de uma a três rotas.");
     }
-    const samples = sampleRoute(geometry);
+    const routeSamples = routes.map(({ geometry, durationSeconds }) => {
+      if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
+        throw new Error("A duração estimada da rota é inválida.");
+      }
+      return {
+        durationSeconds,
+        samples: sampleRoute(geometry),
+      };
+    });
+    const samples = routeSamples.flatMap((route) => route.samples);
     const url = new URL("https://api.open-meteo.com/v1/forecast");
     url.search = new URLSearchParams({
       latitude: samples.map((point) => point.latitude.toFixed(5)).join(","),
@@ -110,22 +127,56 @@
     });
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Clima ao longo da rota indisponível (HTTP ${response.status}).`);
+      throw new Error(`Clima ao longo das rotas indisponível (HTTP ${response.status}).`);
     }
     const forecasts = await response.json();
     if (!Array.isArray(forecasts) || forecasts.length !== samples.length) {
-      throw new Error("A resposta meteorológica da rota está incompleta.");
+      throw new Error("A resposta meteorológica das rotas está incompleta.");
     }
-    return samples.map((sample, index) => ({
+    let forecastIndex = 0;
+    return routeSamples.map((route) => route.samples.map((sample) => ({
       ...sample,
       forecast: selectForecastAt(
-        forecasts[index],
-        departureTimeMs + (durationSeconds * sample.fraction * 1000),
+        forecasts[forecastIndex++],
+        departureTimeMs + (route.durationSeconds * sample.fraction * 1000),
       ),
-    }));
+    })));
   }
 
-  const api = Object.freeze({ sampleRoute, selectForecastAt, analyzeRoute });
+  function summarizeRouteWeather(samples) {
+    if (!Array.isArray(samples)) throw new Error("As amostras de clima da rota são inválidas.");
+    const available = samples.filter((sample) => sample?.forecast);
+    if (!available.length) {
+      return Object.freeze({
+        availableSamples: 0,
+        totalSamples: samples.length,
+        peakPrecipitationProbability: null,
+        meanPrecipitationProbability: null,
+        stormExpected: false,
+      });
+    }
+    const probabilities = available.map(
+      (sample) => sample.forecast.precipitationProbability,
+    );
+    return Object.freeze({
+      availableSamples: available.length,
+      totalSamples: samples.length,
+      peakPrecipitationProbability: Math.max(...probabilities),
+      meanPrecipitationProbability: probabilities.reduce((sum, value) => sum + value, 0)
+        / probabilities.length,
+      stormExpected: available.some(
+        (sample) => [95, 96, 99].includes(sample.forecast.weatherCode),
+      ),
+    });
+  }
+
+  const api = Object.freeze({
+    sampleRoute,
+    selectForecastAt,
+    summarizeRouteWeather,
+    analyzeRoute,
+    analyzeRoutes,
+  });
   root.ClimaRotaRouteAnalysis = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

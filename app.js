@@ -56,6 +56,8 @@ const elements = {
   routeDestination: document.querySelector("#route-destination"),
   routeSummary: document.querySelector("#route-summary"),
   clearRoute: document.querySelector("#clear-route"),
+  routeOptionsPanel: document.querySelector("#route-options-panel"),
+  routeOptionsList: document.querySelector("#route-options-list"),
   destinationWeather: document.querySelector("#destination-weather"),
   destinationWeatherName: document.querySelector("#destination-weather-name"),
   destinationSymbol: document.querySelector("#destination-symbol"),
@@ -151,6 +153,9 @@ let map;
 let currentMarker;
 let destinationMarker;
 let routeLayer;
+let routeLayers = [];
+let routeChoices = [];
+let selectedRouteIndex = 0;
 let currentLocation = { ...INITIAL_LOCATION };
 let destination = null;
 let currentTripSnapshot = null;
@@ -472,36 +477,35 @@ async function calculateRoute(target) {
     throw new Error("O mapa não está disponível. Recarregue a página e tente de novo.");
   }
   const coords = `${currentLocation.lon},${currentLocation.lat};${target.lon},${target.lat}`;
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=3`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Serviço de rotas indisponível (HTTP ${response.status}).`);
   }
   const data = await response.json();
-  const route = data.routes?.[0];
-  if (!route) {
+  const routes = data.routes?.slice(0, 3);
+  if (!routes?.length) {
     throw new Error("Não foi possível traçar uma rota de carro para esse destino.");
   }
-  if (!Number.isFinite(route.distance) || route.distance < 0
+  if (routes.some((route) => (
+    !Number.isFinite(route.distance) || route.distance < 0
     || !Number.isFinite(route.duration) || route.duration < 0
-    || !route.geometry) {
-    throw new Error("O serviço de rotas retornou uma estimativa inválida.");
+    || !route.geometry
+  ))) {
+    throw new Error("O serviço de rotas retornou uma ou mais estimativas inválidas.");
   }
 
   destination = target;
-  if (routeLayer) map.removeLayer(routeLayer);
-  routeLayer = L.geoJSON(route.geometry, {
-    style: { color: "#577b32", weight: 6, opacity: 0.9 },
-  }).addTo(map);
+  clearRouteLayers();
   if (destinationMarker) map.removeLayer(destinationMarker);
   destinationMarker = L.marker([target.lat, target.lon])
     .addTo(map)
     .bindPopup(target.name);
-  map.fitBounds(routeLayer.getBounds(), { padding: [45, 45] });
 
   elements.routeDestination.textContent = target.name;
-  elements.routeSummary.textContent = `${(route.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · ${formatDuration(route.duration)}`;
   elements.routeCard.hidden = false;
+  elements.routeOptionsPanel.hidden = true;
+  elements.routeOptionsList.replaceChildren();
   elements.destinationWeather.hidden = false;
   elements.destinationWeatherName.textContent = target.name;
   elements.routeAnalysis.hidden = false;
@@ -512,7 +516,10 @@ async function calculateRoute(target) {
 
   const tasks = await Promise.allSettled([
     loadDestinationWeather(target),
-    window.ClimaRotaRouteAnalysis.analyzeRoute(route.geometry, route.duration),
+    window.ClimaRotaRouteAnalysis.analyzeRoutes(routes.map((route) => ({
+      geometry: route.geometry,
+      durationSeconds: route.duration,
+    }))),
   ]);
   const destinationResult = tasks[0];
   const routeWeatherResult = tasks[1];
@@ -523,23 +530,149 @@ async function calculateRoute(target) {
     elements.analysisSummary.textContent = routeWeatherResult.reason.message;
     elements.routeWeatherList.replaceChildren();
     elements.routeAnalysis.classList.add("analysis-error");
+    routeChoices = routes.map((route) => ({ ...route, weatherSamples: null }));
   } else {
     elements.routeAnalysis.classList.remove("analysis-error");
-    const samples = routeWeatherResult.value;
-    renderRouteWeather(samples);
-    currentTripSnapshot = {
-      originName: currentLocation.name,
-      destinationName: target.name,
-      distanceKm: route.distance / 1000,
-      durationSeconds: route.duration,
-      forecastSamples: samples,
-    };
-    saveCurrentTrip();
+    routeChoices = routes.map((route, index) => ({
+      ...route,
+      weatherSamples: routeWeatherResult.value[index],
+    }));
   }
+  selectedRouteIndex = routeChoices.reduce(
+    (fastestIndex, route, index) => (
+      route.duration < routeChoices[fastestIndex].duration ? index : fastestIndex
+    ),
+    0,
+  );
+  renderRouteOptions();
+  selectRoute(selectedRouteIndex, true);
   const errors = tasks
     .filter((task) => task.status === "rejected")
     .map((task) => task.reason.message);
   if (errors.length) throw new Error(errors.join(" "));
+}
+
+function clearRouteLayers() {
+  routeLayers.forEach((layer) => {
+    if (map && map.hasLayer(layer)) map.removeLayer(layer);
+  });
+  routeLayers = [];
+  routeLayer = null;
+}
+
+function renderRouteOptions() {
+  elements.routeOptionsList.replaceChildren();
+  elements.routeOptionsPanel.hidden = routeChoices.length < 1;
+  if (!routeChoices.length) return;
+  const fastestIndex = routeChoices.reduce(
+    (best, route, index) => (
+      route.duration < routeChoices[best].duration ? index : best
+    ),
+    0,
+  );
+  const summaries = routeChoices.map((route) => (
+    route.weatherSamples
+      ? window.ClimaRotaRouteAnalysis.summarizeRouteWeather(route.weatherSamples)
+      : null
+  ));
+  const knownWeather = summaries
+    .map((summary, index) => ({ summary, index }))
+    .filter(({ summary }) => Number.isFinite(summary?.peakPrecipitationProbability));
+  const dryerRoute = knownWeather.length > 1
+    ? knownWeather.reduce((best, item) => (
+      item.summary.peakPrecipitationProbability
+        < best.summary.peakPrecipitationProbability ? item : best
+    ))
+    : null;
+  const dryerRouteIndex = dryerRoute?.index ?? -1;
+
+  routeChoices.forEach((route, index) => {
+    const button = document.createElement("button");
+    button.className = "route-option";
+    button.type = "button";
+    button.dataset.routeIndex = String(index);
+    button.setAttribute("aria-pressed", String(index === selectedRouteIndex));
+
+    const heading = document.createElement("strong");
+    heading.textContent = `Rota ${index + 1}`;
+    const estimate = document.createElement("span");
+    estimate.textContent = `${(route.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · ${formatDuration(route.duration)}`;
+    const summary = summaries[index];
+    const climate = document.createElement("small");
+    climate.textContent = summary?.peakPrecipitationProbability === null || !summary
+      ? "Previsão indisponível"
+      : `Máx. ${summary.peakPrecipitationProbability}% nos pontos amostrados${summary.stormExpected ? " · trovoada indicada" : ""}`;
+    const badges = [];
+    if (index === fastestIndex) badges.push("Mais rápida (estimativa)");
+    if (index === dryerRouteIndex) badges.push("Menor chance máxima amostrada");
+    const badgeLine = document.createElement("small");
+    badgeLine.className = "route-option-badges";
+    badgeLine.textContent = badges.join(" · ") || "Alternativa de percurso";
+    button.append(heading, estimate, climate, badgeLine);
+    elements.routeOptionsList.append(button);
+  });
+}
+
+function selectRoute(index, fitMap = false) {
+  if (!Number.isInteger(index) || !routeChoices[index] || !map) {
+    throw new Error("A rota selecionada não está disponível.");
+  }
+  selectedRouteIndex = index;
+  clearRouteLayers();
+  const boundsLayers = [];
+  routeChoices.forEach((choice, routeIndex) => {
+    if (routeIndex === index) return;
+    const layer = L.geoJSON(choice.geometry, {
+      style: {
+        color: routeIndex % 2 === 0 ? "#527e9b" : "#bb7955",
+        weight: 4,
+        opacity: 0.65,
+        dashArray: "7 7",
+      },
+      bubblingMouseEvents: false,
+    });
+    layer.on("click", (event) => {
+      event.originalEvent?.stopPropagation();
+      selectRoute(routeIndex);
+    });
+    layer.addTo(map);
+    routeLayers.push(layer);
+    boundsLayers.push(layer);
+  });
+  routeLayer = L.geoJSON(routeChoices[index].geometry, {
+    style: { color: "#577b32", weight: 7, opacity: 0.96 },
+    bubblingMouseEvents: false,
+  }).addTo(map);
+  routeLayer.on("click", (event) => event.originalEvent?.stopPropagation());
+  routeLayers.push(routeLayer);
+  boundsLayers.push(routeLayer);
+  if (fitMap) {
+    const bounds = L.featureGroup(boundsLayers).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [45, 45] });
+  }
+
+  const route = routeChoices[index];
+  elements.routeSummary.textContent = `${(route.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · ${formatDuration(route.duration)} · estimativa sem trânsito ao vivo`;
+  [...elements.routeOptionsList.querySelectorAll("[data-route-index]")].forEach((button) => {
+    button.setAttribute("aria-pressed", String(Number(button.dataset.routeIndex) === index));
+  });
+  if (route.weatherSamples) {
+    elements.routeAnalysis.classList.remove("analysis-error");
+    renderRouteWeather(route.weatherSamples);
+    currentTripSnapshot = {
+      originName: currentLocation.name,
+      destinationName: destination.name,
+      distanceKm: route.distance / 1000,
+      durationSeconds: route.duration,
+      forecastSamples: route.weatherSamples,
+    };
+    saveCurrentTrip();
+  } else {
+    elements.analysisSummary.textContent = "A previsão para comparar o clima das rotas está indisponível. Os percursos ainda são estimativas sem trânsito ao vivo.";
+    elements.routeWeatherList.replaceChildren();
+    elements.routeAnalysis.classList.add("analysis-error");
+    currentTripSnapshot = null;
+  }
 }
 
 function formatDuration(seconds) {
@@ -1261,11 +1394,14 @@ function clearPntSimulation() {
 
 function clearRoute() {
   destination = null;
-  if (routeLayer && map) map.removeLayer(routeLayer);
+  clearRouteLayers();
+  routeChoices = [];
+  selectedRouteIndex = 0;
   if (destinationMarker && map) map.removeLayer(destinationMarker);
-  routeLayer = null;
   destinationMarker = null;
   elements.routeCard.hidden = true;
+  elements.routeOptionsPanel.hidden = true;
+  elements.routeOptionsList.replaceChildren();
   elements.destinationWeather.hidden = true;
   elements.routeAnalysis.hidden = true;
   currentTripSnapshot = null;
@@ -1297,6 +1433,16 @@ elements.destinationForm.addEventListener("submit", async (event) => {
 
 elements.locateButton.addEventListener("click", locateUser);
 elements.clearRoute.addEventListener("click", clearRoute);
+elements.routeOptionsList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-route-index]");
+  if (!button) return;
+  try {
+    selectRoute(Number(button.dataset.routeIndex));
+    showNotice("");
+  } catch (error) {
+    showNotice(`Não foi possível selecionar essa rota: ${error.message}`, true);
+  }
+});
 elements.searchEvents.addEventListener("click", () => {
   try {
     searchEvents();
