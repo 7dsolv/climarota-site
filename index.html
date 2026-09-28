@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101915">
+    <meta name="description" content="ClimaRota combina previsão do tempo, localização e planejamento de trajetos.">
+    <title>ClimaRota — tempo e caminho</title>
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://tile.openstreetmap.org">
+    <link rel="preconnect" href="https://api.open-meteo.com">
+    <link rel="preconnect" href="https://photon.komoot.io">
+    <link rel="preconnect" href="https://router.project-osrm.org">
+    <link rel="preconnect" href="https://a.tile.opentopomap.org">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+    <script src="route-analysis.js" defer></script>
+    <script src="field-geometry.js" defer></script>
+    <script src="field-weather.js" defer></script>
+    <script src="field-workspace.js" defer></script>
+    <script src="trip-ledger.js" defer></script>
+    <script src="mins-trajectory.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="ClimaRota, início">
+          <span class="brand-mark" aria-hidden="true">↗</span>
+          <span>clima<span class="brand-accent">rota</span></span>
+        </a>
+        <div class="topbar-note"><span class="status-dot"></span> Clima e localização em um só lugar</div>
+        <button class="gps-button" id="locate-button" type="button">
+          <span aria-hidden="true">◎</span> Usar minha localização
+        </button>
+        <button class="track-button" id="track-toggle" type="button" aria-pressed="false">
+          <span aria-hidden="true">⌖</span> Iniciar meu rastreamento
+        </button>
+      </header>
+
+      <main class="main-layout">
+        <section class="map-column" aria-label="Mapa e busca de destino">
+          <div class="map-toolbar">
+            <form class="search-form" id="destination-form">
+              <label class="sr-only" for="destination-input">Buscar destino</label>
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input id="destination-input" type="search" placeholder="Para onde você vai?" autocomplete="off">
+              <button type="submit">Traçar rota</button>
+            </form>
+            <p class="map-hint">Busque um destino para ver o trajeto estimado.</p>
+            <div class="map-actions" role="toolbar" aria-label="Ferramentas de campo para o mapa">
+              <button type="button" data-map-mode="site" aria-pressed="false">＋ Ponto de campo</button>
+              <button type="button" data-map-mode="line" aria-pressed="false">↔ Medir linha</button>
+              <button type="button" data-map-mode="area" aria-pressed="false">⬡ Medir área</button>
+              <button type="button" id="import-mins-trajectory">Importar trilha MINS</button>
+              <button type="button" id="clear-mins-trajectory" hidden>Limpar trilha MINS</button>
+              <button type="button" id="finish-measurement" hidden>Concluir medição</button>
+            </div>
+            <input id="mins-trajectory-file" type="file" accept=".txt,.csv,text/plain,text/csv" hidden>
+            <p class="measurement-status" id="mins-trajectory-status" aria-live="polite" hidden></p>
+            <div class="map-layer-row">
+              <label for="map-layer">Mapa</label>
+              <select id="map-layer" aria-label="Camada do mapa">
+                <option value="street">Ruas</option>
+                <option value="terrain">Relevo</option>
+              </select>
+              <button type="button" id="clear-measurements">Limpar desenhos</button>
+            </div>
+            <p class="measurement-status" id="measurement-status" aria-live="polite" hidden></p>
+          </div>
+          <div id="map" role="application" aria-label="Mapa interativo"></div>
+          <div class="map-attribution">Mapa © OpenStreetMap · rotas © OSRM</div>
+          <div class="route-card" id="route-card" hidden>
+            <div class="route-icon" aria-hidden="true">↗</div>
+            <div class="route-copy">
+              <span class="eyebrow">ROTA ESTIMADA</span>
+              <strong id="route-destination">Destino</strong>
+              <span id="route-summary">—</span>
+            </div>
+            <button class="icon-button" id="clear-route" type="button" aria-label="Limpar rota">×</button>
+          </div>
+        </section>
+
+        <aside class="weather-column" aria-label="Informações meteorológicas">
+          <section class="location-heading">
+            <div>
+              <span class="eyebrow">CLIMA AGORA</span>
+              <h1 id="location-name">São Paulo, SP</h1>
+              <p id="updated-at">Ponto inicial de demonstração</p>
+            </div>
+            <span class="heading-icon" aria-hidden="true">☼</span>
+          </section>
+
+          <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+          <section class="current-weather panel" aria-label="Condições atuais">
+            <div class="current-main">
+              <div>
+                <span class="eyebrow">TEMPERATURA</span>
+                <div class="temperature"><span id="temperature">--</span><sup>°</sup></div>
+                <p class="weather-description" id="weather-description">Carregando previsão…</p>
+              </div>
+              <div class="weather-symbol" id="weather-symbol" aria-hidden="true">☁</div>
+            </div>
+            <div class="weather-stats">
+              <div><span class="stat-icon" aria-hidden="true">↗</span><span><small>Sensação</small><strong id="feels-like">--°</strong></span></div>
+              <div><span class="stat-icon" aria-hidden="true">≋</span><span><small>Vento</small><strong id="wind">-- km/h</strong></span></div>
+              <div><span class="stat-icon" aria-hidden="true">◌</span><span><small>Umidade</small><strong id="humidity">--%</strong></span></div>
+              <div><span class="stat-icon" aria-hidden="true">⌁</span><span><small>Chuva agora</small><strong id="rain-now">-- mm</strong></span></div>
+            </div>
+          </section>
+
+          <section class="panel operations-panel" aria-labelledby="operations-title">
+            <div class="section-heading">
+              <div><span class="eyebrow">PLANEJAMENTO DE CAMPO</span><h2 id="operations-title">Condições para a equipe</h2></div>
+              <span class="work-status-badge" id="work-status-badge">Aguardando</span>
+            </div>
+            <label class="form-label" for="work-type">Tipo de atividade</label>
+            <select class="control-select" id="work-type">
+              <option value="survey">Medição de campo</option>
+              <option value="concrete">Concretagem externa</option>
+              <option value="lifting">Guindaste / içamento</option>
+              <option value="height">Trabalho em altura</option>
+            </select>
+            <div class="work-risk-values">
+              <div><small>Temperatura</small><strong id="work-temperature">--°C</strong></div>
+              <div><small>Vento</small><strong id="work-wind">-- km/h</strong></div>
+              <div><small>Chuva próxima hora</small><strong id="work-rain">--%</strong></div>
+            </div>
+            <ul class="work-risk-list" id="work-risk-list" aria-live="polite">
+              <li>Carregando dados meteorológicos do ponto de referência.</li>
+            </ul>
+            <label class="local-workspace-consent">
+              <input id="workspace-consent" type="checkbox">
+              <span>Manter minhas anotações de campo neste navegador. Não compartilha GPS nem mostra pessoas.</span>
+            </label>
+            <div class="field-site-list" id="field-site-list"></div>
+            <button class="text-button" id="clear-sites" type="button" hidden>Apagar anotações deste navegador</button>
+            <button class="text-button" id="export-sites" type="button" hidden>Exportar anotações</button>
+            <p class="safety-note">Parâmetros indicativos, não normas ocupacionais, alerta oficial nem liberação de serviço. Profissional responsável deve aplicar o PGR, os limites legais e os procedimentos do local.</p>
+          </section>
+
+          <section class="panel forecast-panel">
+            <div class="section-heading">
+              <div><span class="eyebrow">PRÓXIMAS HORAS</span><h2>Previsão de hoje</h2></div>
+              <span class="forecast-label">ATÉ 6H</span>
+            </div>
+            <div class="forecast-list" id="forecast-list" aria-live="polite">
+              <div class="forecast-placeholder">Buscando previsão…</div>
+            </div>
+          </section>
+
+          <section class="panel authority-panel">
+            <div class="section-heading">
+              <div><span class="eyebrow">ALERTAS E CONTEXTO REGIONAL</span><h2>Fonte meteorológica oficial</h2></div>
+              <span class="status-dot" aria-hidden="true"></span>
+            </div>
+            <label class="form-label" for="authority-country">País da fonte</label>
+            <select class="control-select" id="authority-country">
+              <option value="BR">Brasil</option>
+              <option value="US">Estados Unidos</option>
+              <option value="CA">Canadá</option>
+              <option value="GB">Reino Unido</option>
+              <option value="AU">Austrália</option>
+            </select>
+            <p class="authority-note" id="authority-note">O link abre a fonte oficial; este protótipo não monitora alertas ao vivo.</p>
+            <a class="authority-link" id="authority-link" href="https://www.gov.br/inmet/pt-br" target="_blank" rel="noopener noreferrer">Abrir INMET</a>
+          </section>
+
+          <section class="panel destination-weather" id="destination-weather" hidden>
+            <div class="section-heading">
+              <div><span class="eyebrow">NO DESTINO</span><h2 id="destination-weather-name">Condições previstas</h2></div>
+              <span class="destination-symbol" id="destination-symbol" aria-hidden="true">☁</span>
+            </div>
+            <div class="destination-details">
+              <strong id="destination-temperature">--°</strong>
+              <span id="destination-description">Carregando…</span>
+              <span class="rain-chip" id="destination-rain">Chuva: --%</span>
+            </div>
+          </section>
+
+          <section class="panel route-analysis" id="route-analysis" aria-labelledby="route-analysis-title" hidden>
+            <div class="section-heading">
+              <div><span class="eyebrow">FERRAMENTAS CLIMÁTICAS</span><h2 id="route-analysis-title">Clima ao longo do caminho</h2></div>
+              <span class="analysis-badge">5 pontos</span>
+            </div>
+            <p class="analysis-summary" id="analysis-summary"></p>
+            <div class="route-weather-list" id="route-weather-list"></div>
+            <p class="analysis-disclaimer">Estimativa por hora de chegada e pontos amostrados. É uma heurística de planejamento, não um alerta meteorológico oficial.</p>
+          </section>
+
+          <section class="panel storm-safety-panel" aria-labelledby="storm-safety-title">
+            <div class="section-heading">
+              <div><span class="eyebrow">SEGURANÇA DE EMERGÊNCIA</span><h2 id="storm-safety-title">Tempestades e ciclones</h2></div>
+              <span class="safety-icon" aria-hidden="true">!</span>
+            </div>
+            <p>Este painel ajuda a planejar locais e trabalhos; não orienta perseguição de tempestades ou acesso a olho de furacão. Em alerta, afaste-se da área de risco, busque abrigo conforme a autoridade local e não atravesse alagamentos.</p>
+            <p><strong>Observadores oficiais:</strong> registre dados apenas se estiver formalmente autorizado, treinado e operando de local seguro.</p>
+          </section>
+
+          <section class="panel history-panel" aria-labelledby="history-title">
+            <div class="section-heading">
+              <div><span class="eyebrow">AVALIAÇÃO AUDITÁVEL</span><h2 id="history-title">Diário e qualidade</h2></div>
+              <span class="forecast-label">NESTE APARELHO</span>
+            </div>
+            <label class="history-consent">
+              <input id="history-consent" type="checkbox">
+              <span>Guardar resumos e avaliações localmente, sem coordenadas GPS.</span>
+            </label>
+            <p class="quality-score" id="quality-score">Ative o diário para guardar viagens e avaliar previsões.</p>
+            <div class="history-list" id="history-list"></div>
+            <div class="history-actions" id="history-actions" hidden>
+              <button id="export-history" type="button">Exportar meus dados</button>
+              <button id="clear-history" type="button">Apagar diário</button>
+            </div>
+          </section>
+
+          <p class="data-note">GPS próprio é solicitado por permissão e o acompanhamento fica apenas na memória desta sessão. Pedidos meteorológicos vão ao Open-Meteo, destinos ao Photon e rotas ao OSRM. A base cartográfica envia pedidos ao provedor de tiles selecionado. Anotações persistidas ficam neste navegador só após consentimento. Confirme alertas oficiais antes de viajar ou trabalhar.</p>
+        </aside>
+      </main>
+    </div>
+    <dialog class="site-dialog" id="site-dialog">
+      <form id="site-form" method="dialog">
+        <button class="dialog-close" id="close-site-dialog" type="button" aria-label="Fechar">×</button>
+        <span class="eyebrow">ANOTAÇÃO NO MAPA</span>
+        <h2 id="site-dialog-title">Adicionar ponto de campo</h2>
+        <p id="site-coordinate-hint">O marcador fica apenas na memória durante esta sessão, a menos que você autorize o armazenamento local.</p>
+        <label class="form-label" for="site-name">Nome</label>
+        <input class="site-input" id="site-name" maxlength="70" placeholder="Ex.: acesso norte, marco topográfico" required>
+        <label class="form-label" for="site-kind">Tipo de marcador</label>
+        <select class="control-select" id="site-kind">
+          <option value="work">Local de trabalho</option>
+          <option value="measurement">Ponto de medição</option>
+          <option value="hazard">Perigo observado — não verificado</option>
+          <option value="shelter">Abrigo indicado — confirmar localmente</option>
+        </select>
+        <button class="dialog-submit" type="submit">Adicionar ao mapa</button>
+      </form>
+    </dialog>
+    <dialog class="site-dialog" id="mins-trajectory-dialog">
+      <form id="mins-trajectory-form">
+        <button class="dialog-close" id="close-mins-trajectory-dialog" type="button" aria-label="Fechar">×</button>
+        <span class="eyebrow">TRAJETÓRIA MINS</span>
+        <h2>Referenciar a trilha no mapa</h2>
+        <p id="mins-trajectory-file-name">O arquivo será lido somente nesta sessão. A origem informada corresponde ao ponto (0, 0) do referencial local MINS, não necessariamente ao primeiro ponto gravado.</p>
+        <label class="form-label" for="mins-anchor-latitude">Latitude da origem (°)</label>
+        <input class="site-input" id="mins-anchor-latitude" type="number" min="-85" max="85" step="any" required>
+        <label class="form-label" for="mins-anchor-longitude">Longitude da origem (°)</label>
+        <input class="site-input" id="mins-anchor-longitude" type="number" min="-180" max="180" step="any" required>
+        <label class="form-label" for="mins-anchor-yaw">Ângulo do eixo local +X, horário a partir do leste (°)</label>
+        <input class="site-input" id="mins-anchor-yaw" type="number" step="any" value="0" required>
+        <button class="dialog-submit" type="submit">Mostrar trilha nesta sessão</button>
+      </form>
+    </dialog>
+  </body>
+</html>
