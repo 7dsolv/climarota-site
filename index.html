@@ -21,6 +21,7 @@
     <script src="field-workspace.js" defer></script>
     <script src="trip-ledger.js" defer></script>
     <script src="mins-trajectory.js" defer></script>
+    <script src="aceinna-track.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -55,10 +56,14 @@
               <button type="button" data-map-mode="area" aria-pressed="false">⬡ Medir área</button>
               <button type="button" id="import-mins-trajectory">Importar trilha MINS</button>
               <button type="button" id="clear-mins-trajectory" hidden>Limpar trilha MINS</button>
+              <button type="button" id="import-aceinna-trajectory">Importar CSV GNSS/INS</button>
+              <button type="button" id="clear-aceinna-trajectory" hidden>Limpar trilha CSV</button>
               <button type="button" id="finish-measurement" hidden>Concluir medição</button>
             </div>
             <input id="mins-trajectory-file" type="file" accept=".txt,.csv,text/plain,text/csv" hidden>
+            <input id="aceinna-trajectory-file" type="file" accept=".csv,text/csv,text/plain" hidden>
             <p class="measurement-status" id="mins-trajectory-status" aria-live="polite" hidden></p>
+            <p class="measurement-status" id="aceinna-trajectory-status" aria-live="polite" hidden></p>
             <div class="map-layer-row">
               <label for="map-layer">Mapa</label>
               <select id="map-layer" aria-label="Camada do mapa">
@@ -250,6 +255,23 @@
         <input class="site-input" id="mins-anchor-longitude" type="number" min="-180" max="180" step="any" required>
         <label class="form-label" for="mins-anchor-yaw">Ângulo do eixo local +X, horário a partir do leste (°)</label>
         <input class="site-input" id="mins-anchor-yaw" type="number" step="any" value="0" required>
+        <button class="dialog-submit" type="submit">Mostrar trilha nesta sessão</button>
+      </form>
+    </dialog>
+    <dialog class="site-dialog" id="aceinna-trajectory-dialog">
+      <form id="aceinna-trajectory-form">
+        <button class="dialog-close" id="close-aceinna-trajectory-dialog" type="button" aria-label="Fechar">×</button>
+        <span class="eyebrow">ACEINNA GNSS-INS-SIM</span>
+        <h2>Importar trajetória CSV</h2>
+        <p id="aceinna-trajectory-file-name">Amostras GNSS/INS são lidas localmente e permanecem apenas na memória desta sessão. Formatos com posições em latitude/longitude/altitude em graus.</p>
+        <label class="form-label" for="aceinna-trajectory-format">Formato do arquivo</label>
+        <select class="control-select" id="aceinna-trajectory-format" required>
+          <option value="gnss">Saída GNSS: latitude/longitude/altitude nas colunas 3–5</option>
+          <option value="ins">Saída INS: latitude/longitude/altitude nas colunas 5–7</option>
+          <option value="error">Trilha sem cabeçalho: colunas 3–5</option>
+          <option value="compact">Trilha compacta: colunas 2–4</option>
+          <option value="span">Referência em espaço separado por espaços, cabeçalho de 45 linhas</option>
+        </select>
         <button class="dialog-submit" type="submit">Mostrar trilha nesta sessão</button>
       </form>
     </dialog>

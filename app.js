@@ -101,6 +101,15 @@ const elements = {
   minsTrajectoryFileName: document.querySelector("#mins-trajectory-file-name"),
   minsTrajectoryStatus: document.querySelector("#mins-trajectory-status"),
   clearMinsTrajectory: document.querySelector("#clear-mins-trajectory"),
+  importAceinnaTrajectory: document.querySelector("#import-aceinna-trajectory"),
+  clearAceinnaTrajectory: document.querySelector("#clear-aceinna-trajectory"),
+  aceinnaTrajectoryFile: document.querySelector("#aceinna-trajectory-file"),
+  aceinnaTrajectoryDialog: document.querySelector("#aceinna-trajectory-dialog"),
+  aceinnaTrajectoryForm: document.querySelector("#aceinna-trajectory-form"),
+  closeAceinnaTrajectoryDialog: document.querySelector("#close-aceinna-trajectory-dialog"),
+  aceinnaTrajectoryFormat: document.querySelector("#aceinna-trajectory-format"),
+  aceinnaTrajectoryFileName: document.querySelector("#aceinna-trajectory-file-name"),
+  aceinnaTrajectoryStatus: document.querySelector("#aceinna-trajectory-status"),
   historyConsent: document.querySelector("#history-consent"),
   qualityScore: document.querySelector("#quality-score"),
   historyList: document.querySelector("#history-list"),
@@ -134,6 +143,8 @@ let trackedCoordinates = [];
 let latestWorkForecast = null;
 let pendingMinsTrajectoryFile = null;
 let minsTrajectoryLayer = null;
+let pendingAceinnaTrajectoryFile = null;
+let aceinnaTrajectoryLayer = null;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -1040,6 +1051,65 @@ elements.minsTrajectoryFile.addEventListener("change", () => {
   elements.minsTrajectoryFileName.textContent = `${file.name} · ${(file.size / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} KB. O arquivo será lido somente nesta sessão. A origem informada corresponde ao ponto (0, 0) do referencial local MINS, não necessariamente ao primeiro ponto gravado.`;
   elements.minsTrajectoryStatus.hidden = true;
   elements.minsTrajectoryDialog.showModal();
+});
+elements.importAceinnaTrajectory.addEventListener("click", () => {
+  elements.aceinnaTrajectoryFile.click();
+});
+elements.aceinnaTrajectoryFile.addEventListener("change", () => {
+  const [file] = elements.aceinnaTrajectoryFile.files || [];
+  elements.aceinnaTrajectoryFile.value = "";
+  if (!file) return;
+  if (file.size > 25 * 1024 * 1024) {
+    showNotice("O arquivo CSV GNSS/INS excede o limite de 25 MB.", true);
+    return;
+  }
+  pendingAceinnaTrajectoryFile = file;
+  elements.aceinnaTrajectoryFileName.textContent = `${file.name} · ${(file.size / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} KB. Será lido localmente. Escolha o perfil das colunas correspondente ao arquivo.`;
+  elements.aceinnaTrajectoryStatus.hidden = true;
+  elements.aceinnaTrajectoryDialog.showModal();
+});
+elements.aceinnaTrajectoryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = pendingAceinnaTrajectoryFile;
+  if (!file) {
+    elements.aceinnaTrajectoryDialog.close();
+    showNotice("Selecione novamente o arquivo CSV GNSS/INS.", true);
+    return;
+  }
+  try {
+    const coordinates = window.ClimaRotaAceinnaTrack.parseTrajectory(
+      await file.text(),
+      elements.aceinnaTrajectoryFormat.value,
+    );
+    const nextLayer = L.polyline(
+      coordinates.map(([longitude, latitude]) => [latitude, longitude]),
+      { color: "#c45a23", weight: 4, opacity: 0.9 },
+    );
+    if (aceinnaTrajectoryLayer && map) map.removeLayer(aceinnaTrajectoryLayer);
+    aceinnaTrajectoryLayer = nextLayer.addTo(map);
+    map.fitBounds(aceinnaTrajectoryLayer.getBounds(), { padding: [35, 35], maxZoom: 16 });
+    elements.aceinnaTrajectoryStatus.textContent = `Trajetória GNSS/INS Aceinna: ${coordinates.length.toLocaleString("pt-BR")} posições em graus, apenas nesta sessão. Não é o rastreamento GPS ao vivo nem verificação de navegação.`;
+    elements.aceinnaTrajectoryStatus.hidden = false;
+    elements.clearAceinnaTrajectory.hidden = false;
+    elements.aceinnaTrajectoryDialog.close();
+    showNotice("CSV GNSS/INS exibido no mapa; nenhum arquivo ou ponto foi enviado ou salvo.");
+  } catch (error) {
+    showNotice(`Não foi possível importar o CSV GNSS/INS: ${error.message}`, true);
+  }
+});
+elements.closeAceinnaTrajectoryDialog.addEventListener("click", () => {
+  elements.aceinnaTrajectoryDialog.close();
+});
+elements.aceinnaTrajectoryDialog.addEventListener("close", () => {
+  pendingAceinnaTrajectoryFile = null;
+  elements.aceinnaTrajectoryForm.reset();
+});
+elements.clearAceinnaTrajectory.addEventListener("click", () => {
+  if (aceinnaTrajectoryLayer && map) map.removeLayer(aceinnaTrajectoryLayer);
+  aceinnaTrajectoryLayer = null;
+  elements.aceinnaTrajectoryStatus.hidden = true;
+  elements.clearAceinnaTrajectory.hidden = true;
+  showNotice("Trajetória CSV removida da memória desta sessão.");
 });
 elements.minsTrajectoryForm.addEventListener("submit", async (event) => {
   event.preventDefault();
