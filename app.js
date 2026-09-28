@@ -110,6 +110,23 @@ const elements = {
   aceinnaTrajectoryFormat: document.querySelector("#aceinna-trajectory-format"),
   aceinnaTrajectoryFileName: document.querySelector("#aceinna-trajectory-file-name"),
   aceinnaTrajectoryStatus: document.querySelector("#aceinna-trajectory-status"),
+  pntPath: document.querySelector("#pnt-path"),
+  pntDuration: document.querySelector("#pnt-duration"),
+  pntSampleRate: document.querySelector("#pnt-sample-rate"),
+  pntSpeed: document.querySelector("#pnt-speed"),
+  pntGnssNoise: document.querySelector("#pnt-gnss-noise"),
+  pntImuBias: document.querySelector("#pnt-imu-bias"),
+  pntGnssInterval: document.querySelector("#pnt-gnss-interval"),
+  pntSeed: document.querySelector("#pnt-seed"),
+  runPntSimulation: document.querySelector("#run-pnt-simulation"),
+  exportPntSimulation: document.querySelector("#export-pnt-simulation"),
+  clearPntSimulation: document.querySelector("#clear-pnt-simulation"),
+  pntStatus: document.querySelector("#pnt-status"),
+  pntMetrics: document.querySelector("#pnt-metrics"),
+  pntInertialRmse: document.querySelector("#pnt-inertial-rmse"),
+  pntGnssRmse: document.querySelector("#pnt-gnss-rmse"),
+  pntFusedRmse: document.querySelector("#pnt-fused-rmse"),
+  pntGnssFixes: document.querySelector("#pnt-gnss-fixes"),
   historyConsent: document.querySelector("#history-consent"),
   qualityScore: document.querySelector("#quality-score"),
   historyList: document.querySelector("#history-list"),
@@ -145,6 +162,8 @@ let pendingMinsTrajectoryFile = null;
 let minsTrajectoryLayer = null;
 let pendingAceinnaTrajectoryFile = null;
 let aceinnaTrajectoryLayer = null;
+let pntSimulationResult = null;
+let pntSimulationLayers = null;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -998,6 +1017,111 @@ function exportFieldSites() {
   URL.revokeObjectURL(url);
 }
 
+function buildPntSimulationOptions() {
+  const integerInput = (element, label) => {
+    const value = Number(element.value);
+    if (!Number.isSafeInteger(value)) throw new Error(`${label} precisa ser um número inteiro válido.`);
+    return value;
+  };
+  return {
+    path: elements.pntPath.value,
+    durationSeconds: Number(elements.pntDuration.value),
+    sampleRateHz: Number(elements.pntSampleRate.value),
+    speedMetersPerSecond: Number(elements.pntSpeed.value),
+    gnssNoiseMeters: Number(elements.pntGnssNoise.value),
+    imuBiasMg: Number(elements.pntImuBias.value),
+    gnssIntervalSeconds: Number(elements.pntGnssInterval.value),
+    seed: integerInput(elements.pntSeed, "A semente"),
+  };
+}
+
+function addPntPath(layerGroup, points, anchor, yawDegrees, style) {
+  const coordinates = window.ClimaRotaPntSimulator.toGeographicCoordinates(
+    points,
+    anchor,
+    yawDegrees,
+  ).map(([longitude, latitude]) => [latitude, longitude]);
+  return L.polyline(coordinates, style).addTo(layerGroup);
+}
+
+function renderPntSimulation(result) {
+  if (!map) throw new Error("O mapa precisa estar carregado para exibir a simulação.");
+  const anchor = { latitude: currentLocation.lat, longitude: currentLocation.lon };
+  const group = L.featureGroup();
+  addPntPath(group, result.truth, anchor, 0, {
+    color: "#277c47",
+    weight: 3,
+    opacity: 0.72,
+    dashArray: "7 5",
+  });
+  const gnssCoordinates = window.ClimaRotaPntSimulator.toGeographicCoordinates(
+    result.gnss,
+    anchor,
+  );
+  result.gnss.forEach((_, index) => {
+    const [longitude, latitude] = gnssCoordinates[index];
+    L.circleMarker([latitude, longitude], {
+      radius: 4,
+      color: "#8e5c05",
+      weight: 1,
+      fillColor: "#ffc247",
+      fillOpacity: 0.88,
+    }).addTo(group);
+  });
+  addPntPath(group, result.inertial, anchor, 0, {
+    color: "#dd653e",
+    weight: 2,
+    opacity: 0.8,
+  });
+  addPntPath(group, result.fused, anchor, 0, {
+    color: "#644ed2",
+    weight: 3,
+    opacity: 0.95,
+  });
+  group.addTo(map);
+  if (pntSimulationLayers && map.hasLayer(pntSimulationLayers)) {
+    map.removeLayer(pntSimulationLayers);
+  }
+  pntSimulationLayers = group;
+  map.fitBounds(group.getBounds(), { padding: [55, 55], maxZoom: 16 });
+
+  const { metrics } = result;
+  elements.pntInertialRmse.textContent = `${metrics.inertialRmseMeters.toFixed(1)} m`;
+  elements.pntGnssRmse.textContent = `${metrics.gnssRmseMeters.toFixed(1)} m`;
+  elements.pntFusedRmse.textContent = `${metrics.fusedRmseMeters.toFixed(1)} m`;
+  elements.pntGnssFixes.textContent = metrics.gnssFixes.toLocaleString("pt-BR");
+  elements.pntMetrics.hidden = false;
+  elements.exportPntSimulation.hidden = false;
+  elements.clearPntSimulation.hidden = false;
+  elements.pntStatus.textContent = `${metrics.samples.toLocaleString("pt-BR")} amostras sintéticas · ${metrics.finalInertialDriftMeters.toFixed(1)} m de desvio inercial no fim · origem: ${currentLocation.name}. Legenda no mapa: verdade (verde tracejado), GNSS ruidoso (pontos amarelos), inercial (laranja), combinada (roxo).`;
+}
+
+function exportPntSimulation() {
+  if (!pntSimulationResult) throw new Error("Execute uma simulação antes de exportar.");
+  const file = new Blob(
+    [window.ClimaRotaPntSimulator.exportCsv(pntSimulationResult)],
+    { type: "text/csv;charset=utf-8" },
+  );
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "climarota-simulacao-pnt.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function clearPntSimulation() {
+  if (pntSimulationLayers && map && map.hasLayer(pntSimulationLayers)) {
+    map.removeLayer(pntSimulationLayers);
+  }
+  pntSimulationLayers = null;
+  pntSimulationResult = null;
+  elements.pntMetrics.hidden = true;
+  elements.exportPntSimulation.hidden = true;
+  elements.clearPntSimulation.hidden = true;
+  elements.pntStatus.textContent = "Trilhas sintéticas removidas da memória desta sessão.";
+}
+
 function clearRoute() {
   destination = null;
   if (routeLayer && map) map.removeLayer(routeLayer);
@@ -1036,6 +1160,29 @@ elements.destinationForm.addEventListener("submit", async (event) => {
 
 elements.locateButton.addEventListener("click", locateUser);
 elements.clearRoute.addEventListener("click", clearRoute);
+elements.runPntSimulation.addEventListener("click", () => {
+  elements.runPntSimulation.disabled = true;
+  elements.pntStatus.textContent = "Calculando trajetória sintética local…";
+  try {
+    const result = window.ClimaRotaPntSimulator.simulate(buildPntSimulationOptions());
+    renderPntSimulation(result);
+    pntSimulationResult = result;
+  } catch (error) {
+    elements.pntStatus.textContent = `Simulação não executada: ${error.message}`;
+    showNotice(`Não foi possível executar a simulação PNT: ${error.message}`, true);
+  } finally {
+    elements.runPntSimulation.disabled = false;
+  }
+});
+elements.exportPntSimulation.addEventListener("click", () => {
+  try {
+    exportPntSimulation();
+    showNotice("CSV da simulação sintética exportado neste dispositivo.");
+  } catch (error) {
+    showNotice(`Não foi possível exportar a simulação: ${error.message}`, true);
+  }
+});
+elements.clearPntSimulation.addEventListener("click", clearPntSimulation);
 elements.importMinsTrajectory.addEventListener("click", () => {
   elements.minsTrajectoryFile.click();
 });

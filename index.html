@@ -22,6 +22,7 @@
     <script src="trip-ledger.js" defer></script>
     <script src="mins-trajectory.js" defer></script>
     <script src="aceinna-track.js" defer></script>
+    <script src="pnt-simulator.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -143,6 +144,62 @@
             <div class="field-site-list" id="field-site-list"></div>
             <button class="text-button" id="clear-sites" type="button" hidden>Apagar anotações deste navegador</button>
             <button class="text-button" id="export-sites" type="button" hidden>Exportar anotações</button>
+          </section>
+
+          <section class="panel pnt-panel" aria-labelledby="pnt-title">
+            <div class="section-heading">
+              <div><span class="eyebrow">BANCADA PNT LOCAL</span><h2 id="pnt-title">Simulador GNSS + INS</h2></div>
+              <span class="forecast-label">SINTÉTICO</span>
+            </div>
+            <p class="pnt-description">Simula uma trajetória 2D, amostras GNSS com ruído e navegação inercial com viés; combina os sensores num filtro alpha-beta demonstrativo. Tudo é calculado neste navegador.</p>
+            <div class="pnt-form-grid">
+              <label for="pnt-path">Trajetória
+                <select class="control-select" id="pnt-path">
+                  <option value="straight">Reta</option>
+                  <option value="loop">Circuito</option>
+                  <option value="sweep">Faixa de levantamento</option>
+                </select>
+              </label>
+              <label for="pnt-duration">Duração (segundos)
+                <input class="site-input" id="pnt-duration" type="number" min="10" max="900" step="10" value="180" required>
+              </label>
+              <label for="pnt-sample-rate">Amostragem (Hz)
+                <select class="control-select" id="pnt-sample-rate">
+                  <option value="1">1 Hz</option>
+                  <option value="2" selected>2 Hz</option>
+                  <option value="5">5 Hz</option>
+                  <option value="10">10 Hz</option>
+                </select>
+              </label>
+              <label for="pnt-speed">Velocidade (m/s)
+                <input class="site-input" id="pnt-speed" type="number" min="0.5" max="30" step="0.5" value="4" required>
+              </label>
+              <label for="pnt-gnss-noise">Ruído GNSS 1σ (m)
+                <input class="site-input" id="pnt-gnss-noise" type="number" min="0" max="50" step="0.5" value="3" required>
+              </label>
+              <label for="pnt-imu-bias">Viés inercial (mg)
+                <input class="site-input" id="pnt-imu-bias" type="number" min="0" max="50" step="0.5" value="4" required>
+              </label>
+              <label for="pnt-gnss-interval">Intervalo GNSS (s)
+                <input class="site-input" id="pnt-gnss-interval" type="number" min="1" max="60" step="1" value="5" required>
+              </label>
+              <label for="pnt-seed">Semente reproduzível
+                <input class="site-input" id="pnt-seed" type="number" min="0" max="4294967295" step="1" value="7" required>
+              </label>
+            </div>
+            <div class="pnt-actions">
+              <button class="dialog-submit" id="run-pnt-simulation" type="button">Executar simulação</button>
+              <button class="pnt-secondary-button" id="export-pnt-simulation" type="button" hidden>Exportar CSV</button>
+              <button class="pnt-secondary-button" id="clear-pnt-simulation" type="button" hidden>Limpar trilhas</button>
+            </div>
+            <p class="pnt-status" id="pnt-status" role="status" aria-live="polite">Escolha os parâmetros e execute. Até 9.001 amostras por simulação.</p>
+            <div class="pnt-metrics" id="pnt-metrics" hidden>
+              <div><small>RMSE inercial</small><strong id="pnt-inertial-rmse">—</strong></div>
+              <div><small>RMSE GNSS</small><strong id="pnt-gnss-rmse">—</strong></div>
+              <div><small>RMSE combinado</small><strong id="pnt-fused-rmse">—</strong></div>
+              <div><small>Fixes GNSS</small><strong id="pnt-gnss-fixes">—</strong></div>
+            </div>
+            <p class="pnt-disclaimer">Modelo sintético educativo, não implementação nem benchmark do Aceinna, MINS, Kshana ou qualquer hardware. O filtro simplificado não é certificado nem calibrado; não use os resultados para navegação, segurança operacional ou prova de desempenho real.</p>
             <p class="safety-note">Parâmetros indicativos, não normas ocupacionais, alerta oficial nem liberação de serviço. Profissional responsável deve aplicar o PGR, os limites legais e os procedimentos do local.</p>
           </section>
 
