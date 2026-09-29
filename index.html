@@ -27,7 +27,8 @@
     <script src="event-planner.js" defer></script>
     <script src="journey-planner.js?v=20260929-2" defer></script>
     <script src="journey-discovery.js?v=20260929-2" defer></script>
-    <script src="app.js?v=20260929-2" defer></script>
+    <script src="vehicle-navigation.js?v=20260929-3" defer></script>
+    <script src="app.js?v=20260929-3" defer></script>
   </head>
   <body data-workspace-mode="all">
     <div class="app-shell">
@@ -88,6 +89,10 @@
             <p class="measurement-status" id="measurement-status" data-workspace="field" aria-live="polite" hidden></p>
           </div>
           <div id="map" role="application" aria-label="Mapa interativo"></div>
+          <div class="vehicle-nav-map" id="vehicle-nav-map" hidden>
+            <div><strong id="vehicle-nav-map-next">Aguardando GPS…</strong><span id="vehicle-nav-map-distance">—</span></div>
+            <button id="vehicle-nav-map-stop" type="button" aria-label="Parar navegação">■</button>
+          </div>
           <div class="map-attribution">Mapa © OpenStreetMap · rotas © OSRM</div>
           <div class="route-card" id="route-card" data-workspace="travel" hidden>
             <div class="route-icon" aria-hidden="true">↗</div>
@@ -357,9 +362,27 @@
               <a class="stay-booking-link" id="stay-booking-link" target="_blank" rel="noopener noreferrer">Ver opções na Booking.com</a>
               <p class="journey-note" id="stay-status" aria-live="polite">Escolha as datas para pesquisar hospedagem.</p>
             </div>
-            <p class="journey-note">A navegação, o aluguel de carro e a hospedagem abrem serviços externos. O total parcial soma apenas combustível de ida e a diária de aluguel que você informou; não inclui seguro, caução, pedágios ou taxas. Confirme preços, disponibilidade e condições antes de contratar.</p>
+            <p class="journey-note">O Waze, o Google Maps, o aluguel e a hospedagem abrem serviços externos. O total parcial soma apenas combustível de ida e a diária de aluguel informada; confirme preços e condições antes de contratar.</p>
             <button class="journey-save" id="save-journey" type="button">Guardar esta rota no diário</button>
             <p class="journey-note" id="journey-save-note">Ative o diário local para guardar a rota selecionada.</p>
+          </section>
+
+          <section class="panel vehicle-nav-panel" id="vehicle-nav-panel" data-workspace="travel" aria-labelledby="vehicle-nav-title" hidden>
+            <div class="section-heading">
+              <div><span class="eyebrow">GPS VEICULAR EXPERIMENTAL</span><h2 id="vehicle-nav-title">Direção por voz</h2></div>
+              <span class="forecast-label">SEM TRÂNSITO AO VIVO</span>
+            </div>
+            <p class="journey-note">Usa o GPS e a voz deste navegador. Abra o site em HTTPS, mantenha a tela ativa e confirme placas, bloqueios e condições reais da via.</p>
+            <div class="vehicle-nav-actions">
+              <button class="journey-save" id="vehicle-nav-toggle" type="button">Iniciar navegação</button>
+              <button class="text-button" id="vehicle-nav-voice" type="button" aria-pressed="true">Voz ligada</button>
+            </div>
+            <div class="vehicle-nav-guidance" id="vehicle-nav-guidance" hidden>
+              <strong id="vehicle-nav-next">Aguardando GPS…</strong>
+              <span id="vehicle-nav-distance">—</span>
+              <span id="vehicle-nav-eta">—</span>
+            </div>
+            <p class="discovery-status" id="vehicle-nav-status" role="status" aria-live="polite">Trace uma rota e permita acesso ao GPS para começar.</p>
           </section>
 
           <section class="panel discovery-panel" data-workspace="journey-discovery" aria-labelledby="discovery-title">
@@ -367,12 +390,13 @@
               <div><span class="eyebrow">MARCOS DE JORNADA</span><h2 id="discovery-title">Descobertas que ajudam na viagem</h2></div>
               <span class="forecast-label">DADOS OSM</span>
             </div>
-            <p class="journey-note">Encontre paradas úteis e lugares para conhecer perto do ponto de referência ou do destino. Cada marco traz uma ação prática; marque sua passagem somente quando estiver parado e próximo do lugar.</p>
+            <p class="journey-note">Explore o ponto de partida, o destino ou três trechos da rota. Cada marco oferece uma missão útil; confirme a passagem pelo GPS somente quando estiver parado e depois registre a missão concluída.</p>
             <div class="discovery-actions">
               <label for="discovery-center">Explorar perto de
                 <select class="control-select" id="discovery-center">
                   <option value="origin">Ponto de referência</option>
                   <option value="destination" disabled>Destino da rota</option>
+                  <option value="route" disabled>Ao longo da rota</option>
                 </select>
               </label>
               <button class="journey-save" id="discover-marcos" type="button">Buscar marcos</button>
@@ -380,7 +404,7 @@
             </div>
             <p class="discovery-status" id="discovery-status" role="status" aria-live="polite">A busca começa somente quando você clicar. O ponto escolhido é enviado ao Photon.</p>
             <div class="discovery-list" id="discovery-list"></div>
-            <p class="journey-note">Dados colaborativos do OpenStreetMap podem estar desatualizados. Confirme acesso, segurança e funcionamento no local. Passagens ficam só na memória desta sessão e não verificam a atividade realizada.</p>
+            <p class="journey-note">Dados do OpenStreetMap podem estar desatualizados. Confirme acesso e funcionamento no local. Passagens e missões ficam só nesta sessão; a missão é confirmada por você e não tem verificação automática.</p>
           </section>
 
           <section class="panel route-analysis" id="route-analysis" data-workspace="travel" aria-labelledby="route-analysis-title" hidden>

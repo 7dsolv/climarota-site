@@ -71,6 +71,18 @@ const elements = {
   journeyMaps: document.querySelector("#journey-maps"),
   journeyHotels: document.querySelector("#journey-hotels"),
   journeyCars: document.querySelector("#journey-cars"),
+  vehicleNavPanel: document.querySelector("#vehicle-nav-panel"),
+  vehicleNavToggle: document.querySelector("#vehicle-nav-toggle"),
+  vehicleNavVoice: document.querySelector("#vehicle-nav-voice"),
+  vehicleNavGuidance: document.querySelector("#vehicle-nav-guidance"),
+  vehicleNavNext: document.querySelector("#vehicle-nav-next"),
+  vehicleNavDistance: document.querySelector("#vehicle-nav-distance"),
+  vehicleNavEta: document.querySelector("#vehicle-nav-eta"),
+  vehicleNavStatus: document.querySelector("#vehicle-nav-status"),
+  vehicleNavMap: document.querySelector("#vehicle-nav-map"),
+  vehicleNavMapNext: document.querySelector("#vehicle-nav-map-next"),
+  vehicleNavMapDistance: document.querySelector("#vehicle-nav-map-distance"),
+  vehicleNavMapStop: document.querySelector("#vehicle-nav-map-stop"),
   stayCheckin: document.querySelector("#stay-checkin"),
   stayCheckout: document.querySelector("#stay-checkout"),
   stayAdults: document.querySelector("#stay-adults"),
@@ -190,7 +202,9 @@ let discoveries = [];
 let discoveryLayers = [];
 let discoveryAbortController = null;
 let discoveryCache = null;
+let discoveryCoverage = "";
 const markedPassages = new Set();
+const completedMissions = new Set();
 let historyRefreshTimer;
 let streetsLayer;
 let terrainLayer;
@@ -218,6 +232,17 @@ let routeRequestVersion = 0;
 let weatherRequestVersion = 0;
 let searchRequestVersion = 0;
 let lastTrackingWeatherAt = 0;
+let vehicleNavWatchId = null;
+let vehicleNavRoute = null;
+let vehicleNavMarker = null;
+let vehicleNavAccuracy = null;
+let vehicleNavLayer = null;
+let vehicleNavGeneration = 0;
+let vehicleNavOffRoute = 0;
+let vehicleNavLastRerouteAt = 0;
+let vehicleNavSpeechKey = "";
+let vehicleNavVoiceEnabled = true;
+let vehicleNavRouteLoading = false;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -513,7 +538,7 @@ async function calculateRoute(target) {
   }
   const requestVersion = ++routeRequestVersion;
   const coords = `${currentLocation.lon},${currentLocation.lat};${target.lon},${target.lat}`;
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=3`;
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&alternatives=3`;
   const response = await fetch(url);
   if (requestVersion !== routeRequestVersion) return false;
   if (!response.ok) {
@@ -534,8 +559,11 @@ async function calculateRoute(target) {
   }
 
   destination = target;
+  stopVehicleNavigation();
   clearDiscoveries();
   elements.discoveryCenter.querySelector('option[value="destination"]').disabled = false;
+  elements.discoveryCenter.querySelector('option[value="route"]').disabled = false;
+  elements.vehicleNavPanel.hidden = false;
   clearRouteLayers();
   if (destinationMarker) map.removeLayer(destinationMarker);
   const destinationPopup = document.createElement("span");
@@ -664,6 +692,7 @@ function selectRoute(index, fitMap = false) {
     throw new Error("A rota selecionada não está disponível.");
   }
   selectedRouteIndex = index;
+  if (vehicleNavWatchId !== null) stopVehicleNavigation();
   clearRouteLayers();
   const boundsLayers = [];
   routeChoices.forEach((choice, routeIndex) => {
@@ -831,6 +860,7 @@ function clearDiscoveries() {
   discoveryLayers.forEach((layer) => { if (map?.hasLayer(layer)) map.removeLayer(layer); });
   discoveryLayers = [];
   discoveries = [];
+  discoveryCoverage = "";
   elements.discoveryList.replaceChildren();
   elements.clearDiscoveries.hidden = true;
   elements.discoverMarcos.disabled = false;
@@ -840,8 +870,9 @@ function clearDiscoveries() {
 function renderDiscoveries() {
   elements.discoveryList.replaceChildren();
   const count = discoveries.filter((item) => markedPassages.has(item.id)).length;
+  const missions = discoveries.filter((item) => completedMissions.has(item.id)).length;
   elements.discoveryStatus.textContent = discoveries.length
-    ? `${discoveries.length} marcos próximos · ${count} passagem(ns) marcada(s) nesta lista. Dados do OpenStreetMap via Photon.`
+    ? `${discoveries.length} marcos · ${count} passagens · ${missions} missões concluídas nesta lista. Dados do OpenStreetMap via Photon.${discoveryCoverage}`
     : "Nenhum marco dessas categorias foi encontrado até 2,5 km do ponto escolhido.";
   elements.clearDiscoveries.hidden = discoveries.length === 0;
   discoveries.forEach((item) => {
@@ -852,7 +883,9 @@ function renderDiscoveries() {
     const title = document.createElement("strong");
     title.textContent = item.name;
     const distance = document.createElement("span");
-    distance.textContent = `${item.distanceMeters.toLocaleString("pt-BR")} m`;
+    distance.textContent = item.routeKm === undefined
+      ? `${item.distanceMeters.toLocaleString("pt-BR")} m`
+      : `perto do km ${item.routeKm}`;
     heading.append(title, distance);
     const category = document.createElement("small");
     category.textContent = item.label;
@@ -874,12 +907,21 @@ function renderDiscoveries() {
     markButton.textContent = markedPassages.has(item.id) ? "Passagem marcada" : "Marcar passagem";
     markButton.disabled = markedPassages.has(item.id);
     markButton.addEventListener("click", () => markPassage(item, markButton));
+    const missionButton = document.createElement("button");
+    missionButton.type = "button";
+    missionButton.textContent = completedMissions.has(item.id) ? "Missão concluída" : "Concluir missão";
+    missionButton.disabled = !markedPassages.has(item.id) || completedMissions.has(item.id);
+    missionButton.addEventListener("click", () => {
+      completedMissions.add(item.id);
+      renderDiscoveries();
+      elements.discoveryStatus.textContent = "Missão registrada nesta sessão por sua confirmação. A atividade não foi verificada pelo aplicativo.";
+    });
     const source = document.createElement("a");
     source.href = item.sourceUrl;
     source.target = "_blank";
     source.rel = "noopener noreferrer";
     source.textContent = "Ver no OSM";
-    actions.append(mapButton, markButton, source);
+    actions.append(mapButton, markButton, missionButton, source);
     card.append(heading, category, task, actions);
     elements.discoveryList.append(card);
   });
@@ -911,29 +953,52 @@ async function discoverMarcos() {
     elements.discoveryStatus.textContent = "O mapa não está disponível. Recarregue a página e tente novamente.";
     return;
   }
-  const center = elements.discoveryCenter.value === "destination" ? destination : currentLocation;
-  if (!center) {
-    elements.discoveryStatus.textContent = "Trace uma rota antes de explorar perto do destino.";
+  const mode = elements.discoveryCenter.value;
+  const center = mode === "destination" ? destination : currentLocation;
+  const route = routeChoices[selectedRouteIndex];
+  if ((mode === "route" && !route) || (mode === "destination" && !destination)) {
+    elements.discoveryStatus.textContent = "Trace uma rota antes de explorar esse trecho.";
     return;
   }
-  const url = window.ClimaRotaJourneyDiscovery.buildDiscoveryUrl(center);
+  const discovery = window.ClimaRotaJourneyDiscovery;
+  let centers;
+  try {
+    centers = mode === "route" ? discovery.sampleRouteCenters(route.geometry) : [center];
+  } catch (error) {
+    elements.discoveryStatus.textContent = error.message;
+    return;
+  }
+  const urls = centers.map((point) => discovery.buildDiscoveryUrl(point));
+  const cacheKey = urls.join("|");
   discoveryAbortController?.abort();
   const controller = new AbortController();
   discoveryAbortController = controller;
   let timedOut = false;
   const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
   elements.discoverMarcos.disabled = true;
-  elements.discoveryStatus.textContent = "Buscando pontos reais perto do local escolhido…";
+  elements.discoveryStatus.textContent = mode === "route"
+    ? "Buscando paradas reais em três trechos da rota…"
+    : "Buscando pontos reais perto do local escolhido…";
   try {
     let items;
-    if (discoveryCache?.url === url && Date.now() - discoveryCache.time < 300000) {
+    if (discoveryCache?.url === cacheKey && Date.now() - discoveryCache.time < 300000) {
       items = discoveryCache.items;
+      discoveryCoverage = discoveryCache.coverage;
     } else {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Serviço de pontos indisponível (HTTP ${response.status}).`);
-      const data = await response.json();
-      items = window.ClimaRotaJourneyDiscovery.normalizeDiscoveries(data.features, center);
-      discoveryCache = { url, time: Date.now(), items };
+      const requests = await Promise.allSettled(urls.map(async (url) => {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Serviço de pontos indisponível (HTTP ${response.status}).`);
+        return (await response.json()).features;
+      }));
+      if (requests.every((result) => result.status === "rejected")) {
+        throw requests[0].reason;
+      }
+      const batches = requests.map((result) => result.status === "fulfilled" ? result.value : []);
+      const completed = requests.filter((result) => result.status === "fulfilled").length;
+      discoveryCoverage = completed === requests.length ? "" : ` ${completed} de ${requests.length} trechos consultados.`;
+      items = mode === "route" ? discovery.mergeRouteDiscoveries(batches, centers)
+        : discovery.normalizeDiscoveries(batches[0], center);
+      discoveryCache = { url: cacheKey, time: Date.now(), items, coverage: discoveryCoverage };
     }
     if (controller.signal.aborted) return;
     discoveryLayers.forEach((layer) => { if (map?.hasLayer(layer)) map.removeLayer(layer); });
@@ -1508,6 +1573,193 @@ function stopOwnTracking(clearTrack = true) {
   setTrackerButton(false);
 }
 
+function speakVehicleInstruction(message, key) {
+  if (!vehicleNavVoiceEnabled || !window.speechSynthesis || !window.SpeechSynthesisUtterance
+    || vehicleNavSpeechKey === key) return;
+  vehicleNavSpeechKey = key;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = "pt-BR";
+  utterance.rate = 0.95;
+  window.speechSynthesis.speak(utterance);
+}
+
+function stopVehicleNavigation(message = "Navegação parada. O GPS deixou de ser acompanhado.") {
+  vehicleNavGeneration += 1;
+  if (vehicleNavWatchId !== null) navigator.geolocation.clearWatch(vehicleNavWatchId);
+  vehicleNavWatchId = null;
+  vehicleNavRoute = null;
+  vehicleNavRouteLoading = false;
+  vehicleNavOffRoute = 0;
+  vehicleNavSpeechKey = "";
+  window.speechSynthesis?.cancel();
+  for (const layer of [vehicleNavMarker, vehicleNavAccuracy, vehicleNavLayer]) {
+    if (layer && map?.hasLayer(layer)) map.removeLayer(layer);
+  }
+  vehicleNavMarker = null;
+  vehicleNavAccuracy = null;
+  vehicleNavLayer = null;
+  elements.vehicleNavToggle.textContent = "Iniciar navegação";
+  elements.vehicleNavGuidance.hidden = true;
+  elements.vehicleNavMap.hidden = true;
+  document.querySelector(".map-column").classList.remove("is-navigating");
+  elements.vehicleNavStatus.textContent = message;
+}
+
+function displayVehicleRoute(route) {
+  if (vehicleNavLayer && map.hasLayer(vehicleNavLayer)) map.removeLayer(vehicleNavLayer);
+  vehicleNavLayer = L.geoJSON(route.geometry, {
+    style: { color: "#3478e5", weight: 8, opacity: 0.9 },
+    bubblingMouseEvents: false,
+  }).addTo(map);
+}
+
+async function requestVehicleRoute(point, generation, isReroute = false) {
+  if (vehicleNavRouteLoading || !destination) return;
+  vehicleNavRouteLoading = true;
+  elements.vehicleNavStatus.textContent = isReroute ? "Saída da rota detectada. Recalculando…" : "Calculando rota a partir do GPS…";
+  try {
+    const coordinates = `${point.lon},${point.lat};${destination.lon},${destination.lat}`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=true&alternatives=false`;
+    const response = await fetch(url);
+    if (generation !== vehicleNavGeneration) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (generation !== vehicleNavGeneration) return;
+    const raw = data.routes?.[0];
+    const route = window.ClimaRotaVehicleNavigation.prepareRoute(raw);
+    vehicleNavRoute = route;
+    displayVehicleRoute(route);
+    if (isReroute) {
+      clearRouteLayers();
+      routeChoices = [{ ...raw, weatherSamples: null }];
+      selectedRouteIndex = 0;
+      elements.routeOptionsPanel.hidden = true;
+      elements.routeAnalysis.hidden = true;
+      elements.routeSummary.textContent = `${(raw.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · rota recalculada · sem trânsito ao vivo`;
+      renderJourney();
+    }
+    vehicleNavOffRoute = 0;
+    vehicleNavSpeechKey = "";
+    elements.vehicleNavStatus.textContent = isReroute ? "Rota recalculada com o GPS atual." : "Navegação ativa com o GPS atual.";
+  } catch (error) {
+    if (generation === vehicleNavGeneration) {
+      elements.vehicleNavStatus.textContent = `Não foi possível ${isReroute ? "recalcular" : "iniciar"} a rota: ${error.message}. Verifique a conexão.`;
+    }
+  } finally {
+    if (generation === vehicleNavGeneration) vehicleNavRouteLoading = false;
+  }
+}
+
+function updateVehiclePosition(position, generation) {
+  if (generation !== vehicleNavGeneration || !destination) return;
+  const { coords } = position;
+  const point = { lat: coords.latitude, lon: coords.longitude };
+  const accuracy = coords.accuracy;
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)
+    || !Number.isFinite(accuracy) || accuracy < 0
+    || !Number.isFinite(position.timestamp) || Math.abs(Date.now() - position.timestamp) > 20000) {
+    elements.vehicleNavStatus.textContent = "GPS sem posição recente e válida. Aguardando novo sinal…";
+    elements.vehicleNavMapNext.textContent = "GPS sem posição recente";
+    elements.vehicleNavMapDistance.textContent = "Confira a via e aguarde novo sinal";
+    return;
+  }
+  const latLng = [point.lat, point.lon];
+  if (!vehicleNavMarker) {
+    vehicleNavMarker = L.circleMarker(latLng, { radius: 11, color: "#fff", weight: 3,
+      fillColor: "#3478e5", fillOpacity: 1 }).addTo(map).bindPopup("Posição do aparelho");
+    vehicleNavAccuracy = L.circle(latLng, { radius: accuracy, color: "#3478e5",
+      fillColor: "#3478e5", fillOpacity: 0.08, weight: 1 }).addTo(map);
+  } else {
+    vehicleNavMarker.setLatLng(latLng);
+    vehicleNavAccuracy.setLatLng(latLng).setRadius(accuracy);
+  }
+  map.setView(latLng, Math.max(map.getZoom(), 15), { animate: false });
+  currentLocation = { ...currentLocation, ...point, name: "Sua localização" };
+  if (accuracy > 100) {
+    elements.vehicleNavStatus.textContent = `GPS impreciso (±${Math.round(accuracy)} m). Aguarde sinal melhor antes de seguir instruções.`;
+    elements.vehicleNavMapNext.textContent = "GPS impreciso";
+    elements.vehicleNavMapDistance.textContent = `Precisão ±${Math.round(accuracy)} m · confira a via`;
+    return;
+  }
+  if (!vehicleNavRoute) {
+    if (vehicleNavRouteLoading) return;
+    const selected = routeChoices[selectedRouteIndex];
+    try {
+      const prepared = window.ClimaRotaVehicleNavigation.prepareRoute(selected);
+      if (window.ClimaRotaVehicleNavigation.distanceMeters(point, prepared.path[0]) <= 100) {
+        vehicleNavRoute = prepared;
+        displayVehicleRoute(prepared);
+        elements.vehicleNavStatus.textContent = "Navegação ativa na rota escolhida.";
+      } else {
+        requestVehicleRoute(point, generation);
+        return;
+      }
+    } catch (_error) {
+      requestVehicleRoute(point, generation);
+      return;
+    }
+  }
+  const navigation = window.ClimaRotaVehicleNavigation;
+  const progress = navigation.progressAt(point, vehicleNavRoute);
+  if (navigation.distanceMeters(point, destination) <= 35 && accuracy <= 50) {
+    stopVehicleNavigation("Você chegou perto do destino. Confirme a entrada e estacione em local permitido.");
+    return;
+  }
+  vehicleNavOffRoute = progress.distanceMeters > Math.max(80, accuracy * 2)
+    ? vehicleNavOffRoute + 1 : 0;
+  if (navigation.shouldRecalculate(progress, accuracy, vehicleNavOffRoute,
+    Date.now() - vehicleNavLastRerouteAt) && !vehicleNavRouteLoading) {
+    vehicleNavLastRerouteAt = Date.now();
+    requestVehicleRoute(point, generation, true);
+  }
+  const instruction = navigation.maneuverText(progress.maneuver);
+  elements.vehicleNavGuidance.hidden = false;
+  elements.vehicleNavNext.textContent = instruction;
+  elements.vehicleNavDistance.textContent = `${navigation.formatDistance(progress.maneuverMeters)} até a próxima manobra · ${navigation.formatDistance(progress.remainingMeters)} restantes`;
+  elements.vehicleNavMapNext.textContent = instruction;
+  elements.vehicleNavMapDistance.textContent = elements.vehicleNavDistance.textContent;
+  elements.vehicleNavEta.textContent = `Chegada aproximada: ${new Date(Date.now() + progress.remainingSeconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · sem trânsito ao vivo`;
+  if (accuracy > 50 || progress.distanceMeters > Math.max(80, accuracy * 2)) {
+    elements.vehicleNavStatus.textContent = "Posição fora da rota ou sinal incerto. Confira a via e aguarde o recálculo.";
+    return;
+  }
+  elements.vehicleNavStatus.textContent = `GPS ±${Math.round(accuracy)} m · posição e ETA estimadas`;
+  const threshold = progress.maneuverMeters <= 80 ? 80 : progress.maneuverMeters <= 300 ? 300 : 0;
+  if (threshold) speakVehicleInstruction(`Em ${navigation.formatDistance(progress.maneuverMeters)}, ${instruction.toLowerCase()}.`, `${progress.nextIndex}:${threshold}`);
+}
+
+function startVehicleNavigation() {
+  if (!destination || !routeChoices.length || !map) {
+    elements.vehicleNavStatus.textContent = "Trace uma rota de carro antes de iniciar a navegação.";
+    return;
+  }
+  if (!navigator.geolocation) {
+    elements.vehicleNavStatus.textContent = "Este navegador não oferece acesso ao GPS.";
+    return;
+  }
+  if (trackWatchId !== null) stopOwnTracking();
+  const generation = ++vehicleNavGeneration;
+  vehicleNavLastRerouteAt = Date.now() - 30000;
+  vehicleNavSpeechKey = "";
+  speakVehicleInstruction("Navegação iniciada. Aguarde a posição do GPS antes de dirigir.", "start");
+  elements.vehicleNavStatus.textContent = "Solicitando GPS em tempo real…";
+  elements.vehicleNavToggle.textContent = "Parar navegação";
+  elements.vehicleNavMap.hidden = false;
+  document.querySelector(".map-column").classList.add("is-navigating");
+  try {
+    vehicleNavWatchId = navigator.geolocation.watchPosition(
+      (position) => updateVehiclePosition(position, generation),
+      (error) => stopVehicleNavigation(error.code === 1
+        ? "Permissão GPS negada. Autorize a localização no navegador."
+        : "GPS indisponível. Verifique o sinal e tente novamente."),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+    );
+  } catch (error) {
+    stopVehicleNavigation(`Não foi possível iniciar o GPS: ${error.message}`);
+  }
+}
+
 function startOwnTracking() {
   if (!navigator.geolocation) {
     showNotice("Este navegador não oferece suporte à localização.", true);
@@ -1711,6 +1963,7 @@ function clearPntSimulation() {
 }
 
 function clearRoute() {
+  stopVehicleNavigation();
   routeRequestVersion += 1;
   searchRequestVersion += 1;
   destination = null;
@@ -1718,6 +1971,8 @@ function clearRoute() {
   clearDiscoveries();
   elements.discoveryCenter.value = "origin";
   elements.discoveryCenter.querySelector('option[value="destination"]').disabled = true;
+  elements.discoveryCenter.querySelector('option[value="route"]').disabled = true;
+  elements.vehicleNavPanel.hidden = true;
   clearRouteLayers();
   routeChoices = [];
   selectedRouteIndex = 0;
@@ -1991,6 +2246,18 @@ elements.trackToggle.addEventListener("click", () => {
     stopOwnTracking();
     showNotice("O rastreamento do seu aparelho parou; a trilha foi removida da memória.");
   }
+});
+elements.vehicleNavToggle.addEventListener("click", () => {
+  if (vehicleNavWatchId === null) startVehicleNavigation();
+  else stopVehicleNavigation();
+});
+elements.vehicleNavMapStop.addEventListener("click", () => stopVehicleNavigation());
+elements.vehicleNavVoice.addEventListener("click", () => {
+  vehicleNavVoiceEnabled = !vehicleNavVoiceEnabled;
+  elements.vehicleNavVoice.setAttribute("aria-pressed", String(vehicleNavVoiceEnabled));
+  elements.vehicleNavVoice.textContent = vehicleNavVoiceEnabled ? "Voz ligada" : "Voz desligada";
+  if (!vehicleNavVoiceEnabled) window.speechSynthesis?.cancel();
+  else vehicleNavSpeechKey = "";
 });
 elements.workType.addEventListener("change", renderWorkConditions);
 elements.countrySelect.addEventListener("change", () => {

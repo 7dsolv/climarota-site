@@ -6,6 +6,9 @@
     "amenity:charging_station": { label: "Recarga", task: "Confira conector, preço e funcionamento antes de parar." },
     "amenity:drinking_water": { label: "Água", task: "Confirme no local se a água está disponível e própria para consumo." },
     "amenity:toilets": { label: "Banheiro", task: "Confirme acesso e horário antes de contar com esta parada." },
+    "amenity:cafe": { label: "Pausa", task: "Faça uma pausa em local permitido e confira o horário de atendimento." },
+    "amenity:pharmacy": { label: "Farmácia", task: "Confira horário e disponibilidade antes de contar com esta parada." },
+    "tourism:hotel": { label: "Hospedagem", task: "Confira disponibilidade, preço e condições diretamente com o local." },
     "tourism:museum": { label: "Cultura", task: "Conheça uma história do lugar e confira horário de visita." },
     "tourism:viewpoint": { label: "Paisagem", task: "Observe a paisagem e as condições do tempo de um local permitido." },
     "leisure:park": { label: "Área verde", task: "Faça uma pausa e observe o ambiente sem sair das áreas permitidas." },
@@ -75,6 +78,49 @@
     }).slice(0, 12);
   }
 
+  function sampleRouteCenters(geometry, count = 3) {
+    const coordinates = geometry?.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2 || !Number.isInteger(count)
+      || count < 1 || count > 5) throw new Error("A rota não tem pontos válidos para procurar marcos.");
+    const points = coordinates.map(([lon, lat]) => ({ lat, lon }));
+    if (points.some((point) => !validPoint(point))) throw new Error("A rota contém coordenadas inválidas.");
+    const cumulative = [0];
+    for (let index = 1; index < points.length; index += 1) {
+      cumulative.push(cumulative[index - 1] + distanceMeters(points[index - 1], points[index]));
+    }
+    const total = cumulative.at(-1);
+    if (total < 100) throw new Error("A rota é curta demais para buscar marcos ao longo do caminho.");
+    return Array.from({ length: count }, (_, index) => {
+      const target = total * (index + 1) / (count + 1);
+      const segment = cumulative.findIndex((value) => value >= target);
+      const start = Math.max(0, segment - 1);
+      const fraction = (target - cumulative[start]) / (cumulative[segment] - cumulative[start] || 1);
+      return {
+        lat: points[start].lat + (points[segment].lat - points[start].lat) * fraction,
+        lon: points[start].lon + (points[segment].lon - points[start].lon) * fraction,
+        routeKm: Math.round(target / 1000),
+      };
+    });
+  }
+
+  function mergeRouteDiscoveries(batches, centers) {
+    if (!Array.isArray(batches) || !Array.isArray(centers) || batches.length !== centers.length) {
+      throw new Error("As paradas da rota estão incompletas.");
+    }
+    const seen = new Set();
+    const perCategory = new Map();
+    const combined = [];
+    batches.forEach((features, index) => {
+      for (const item of normalizeDiscoveries(features, centers[index], 1800)) {
+        if (seen.has(item.id) || (perCategory.get(item.label) || 0) >= 3) continue;
+        seen.add(item.id);
+        perCategory.set(item.label, (perCategory.get(item.label) || 0) + 1);
+        combined.push(Object.freeze({ ...item, routeKm: centers[index].routeKm }));
+      }
+    });
+    return combined.slice(0, 12);
+  }
+
   function canMarkPassage(discovery, position) {
     const location = { lat: position?.coords?.latitude, lon: position?.coords?.longitude };
     const accuracy = position?.coords?.accuracy;
@@ -91,7 +137,8 @@
     return { allowed: true, reason: "Passagem aproximada confirmada pelo GPS deste aparelho." };
   }
 
-  const api = Object.freeze({ buildDiscoveryUrl, normalizeDiscoveries, canMarkPassage, distanceMeters });
+  const api = Object.freeze({ buildDiscoveryUrl, normalizeDiscoveries, sampleRouteCenters,
+    mergeRouteDiscoveries, canMarkPassage, distanceMeters });
   root.ClimaRotaJourneyDiscovery = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
