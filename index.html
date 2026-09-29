@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://router.project-osrm.org">
     <link rel="preconnect" href="https://a.tile.opentopomap.org">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-    <link rel="stylesheet" href="styles.css?v=20260929-2">
+    <link rel="stylesheet" href="styles.css?v=20260929-4">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
     <script src="route-analysis.js" defer></script>
     <script src="field-geometry.js" defer></script>
@@ -28,7 +28,7 @@
     <script src="journey-planner.js?v=20260929-2" defer></script>
     <script src="journey-discovery.js?v=20260929-2" defer></script>
     <script src="vehicle-navigation.js?v=20260929-3" defer></script>
-    <script src="app.js?v=20260929-3" defer></script>
+    <script src="app.js?v=20260929-4" defer></script>
   </head>
   <body data-workspace-mode="all">
     <div class="app-shell">
@@ -60,7 +60,7 @@
               <label class="sr-only" for="destination-input">Buscar destino</label>
               <span class="search-icon" aria-hidden="true">⌕</span>
               <input id="destination-input" type="search" placeholder="Para onde você vai?" autocomplete="off">
-              <button type="submit">Traçar rota</button>
+              <button type="submit">Abrir caminho</button>
             </form>
             <p class="map-hint">Busque um destino para ver o trajeto estimado.</p>
             <div class="map-actions" role="toolbar" aria-label="Ferramentas de campo para o mapa">
@@ -89,9 +89,21 @@
             <p class="measurement-status" id="measurement-status" data-workspace="field" aria-live="polite" hidden></p>
           </div>
           <div id="map" role="application" aria-label="Mapa interativo"></div>
-          <div class="vehicle-nav-map" id="vehicle-nav-map" hidden>
-            <div><strong id="vehicle-nav-map-next">Aguardando GPS…</strong><span id="vehicle-nav-map-distance">—</span></div>
-            <button id="vehicle-nav-map-stop" type="button" aria-label="Parar navegação">■</button>
+          <div class="vehicle-nav-map" id="vehicle-nav-map" role="region" aria-label="Direção no mapa" hidden>
+            <div class="vehicle-nav-map-top">
+              <div><span class="vehicle-nav-kicker">DIREÇÃO NO CLIMAROTA</span><strong id="vehicle-nav-map-destination">Destino</strong></div>
+              <button id="vehicle-nav-map-stop" type="button" aria-label="Voltar ao planejamento">Voltar</button>
+            </div>
+            <div class="vehicle-nav-guidance" id="vehicle-nav-guidance" hidden>
+              <strong id="vehicle-nav-next">Aguardando GPS…</strong>
+              <span id="vehicle-nav-distance">—</span>
+              <span id="vehicle-nav-eta">—</span>
+            </div>
+            <p class="vehicle-nav-map-status" id="vehicle-nav-status" role="status" aria-live="polite">Aguardando GPS do aparelho…</p>
+            <div class="vehicle-nav-map-actions">
+              <button id="vehicle-nav-toggle" type="button">Tentar GPS</button>
+              <button id="vehicle-nav-voice" type="button" aria-pressed="true">Voz ligada</button>
+            </div>
           </div>
           <div class="map-attribution">Mapa © OpenStreetMap · rotas © OSRM</div>
           <div class="route-card" id="route-card" data-workspace="travel" hidden>
@@ -334,8 +346,6 @@
             </div>
             <p class="journey-estimate" id="journey-estimate" aria-live="polite">Informe consumo e preço para estimar o combustível da rota escolhida.</p>
             <div class="journey-links">
-              <a id="journey-waze" target="_blank" rel="noopener noreferrer">Navegar no Waze</a>
-              <a id="journey-maps" target="_blank" rel="noopener noreferrer">Abrir no Google Maps</a>
               <a id="journey-hotels" target="_blank" rel="noopener noreferrer">Buscar hotéis no destino</a>
               <a id="journey-cars" target="_blank" rel="noopener noreferrer">Ver aluguel de carros</a>
             </div>
@@ -362,27 +372,10 @@
               <a class="stay-booking-link" id="stay-booking-link" target="_blank" rel="noopener noreferrer">Ver opções na Booking.com</a>
               <p class="journey-note" id="stay-status" aria-live="polite">Escolha as datas para pesquisar hospedagem.</p>
             </div>
-            <p class="journey-note">O Waze, o Google Maps, o aluguel e a hospedagem abrem serviços externos. O total parcial soma apenas combustível de ida e a diária de aluguel informada; confirme preços e condições antes de contratar.</p>
+            <p class="journey-note">A direção acontece no mapa do ClimaRota, sem conta. Aluguel e hospedagem abrem serviços externos. O total parcial soma apenas combustível de ida e a diária de aluguel informada; confirme preços e condições antes de contratar.</p>
+            <button class="journey-save" id="open-driving-map" type="button">Abrir direção no mapa</button>
             <button class="journey-save" id="save-journey" type="button">Guardar esta rota no diário</button>
             <p class="journey-note" id="journey-save-note">Ative o diário local para guardar a rota selecionada.</p>
-          </section>
-
-          <section class="panel vehicle-nav-panel" id="vehicle-nav-panel" data-workspace="travel" aria-labelledby="vehicle-nav-title" hidden>
-            <div class="section-heading">
-              <div><span class="eyebrow">GPS VEICULAR EXPERIMENTAL</span><h2 id="vehicle-nav-title">Direção por voz</h2></div>
-              <span class="forecast-label">SEM TRÂNSITO AO VIVO</span>
-            </div>
-            <p class="journey-note">Usa o GPS e a voz deste navegador. Abra o site em HTTPS, mantenha a tela ativa e confirme placas, bloqueios e condições reais da via.</p>
-            <div class="vehicle-nav-actions">
-              <button class="journey-save" id="vehicle-nav-toggle" type="button">Iniciar navegação</button>
-              <button class="text-button" id="vehicle-nav-voice" type="button" aria-pressed="true">Voz ligada</button>
-            </div>
-            <div class="vehicle-nav-guidance" id="vehicle-nav-guidance" hidden>
-              <strong id="vehicle-nav-next">Aguardando GPS…</strong>
-              <span id="vehicle-nav-distance">—</span>
-              <span id="vehicle-nav-eta">—</span>
-            </div>
-            <p class="discovery-status" id="vehicle-nav-status" role="status" aria-live="polite">Trace uma rota e permita acesso ao GPS para começar.</p>
           </section>
 
           <section class="panel discovery-panel" data-workspace="journey-discovery" aria-labelledby="discovery-title">
@@ -443,7 +436,7 @@
             </div>
           </section>
 
-          <p class="data-note">GPS próprio é solicitado por permissão e o acompanhamento fica apenas na memória desta sessão. Pedidos meteorológicos vão ao Open-Meteo, destinos e buscas de marcos ao Photon e rotas ao OSRM. A base cartográfica envia pedidos ao provedor de tiles selecionado. Ao abrir hospedagem, aluguel ou navegação, o destino e os critérios escolhidos seguem para o site externo. Anotações persistidas ficam neste navegador só após consentimento. Confirme alertas oficiais antes de viajar ou trabalhar.</p>
+          <p class="data-note">GPS próprio é solicitado por permissão e o acompanhamento fica apenas na memória desta sessão. Pedidos meteorológicos vão ao Open-Meteo, destinos e buscas de marcos ao Photon e rotas ao OSRM. A base cartográfica envia pedidos ao provedor de tiles selecionado. Hospedagem e aluguel abrem sites externos. Anotações persistidas ficam neste navegador só após consentimento. Confirme alertas oficiais antes de viajar ou trabalhar.</p>
         </aside>
       </main>
     </div>

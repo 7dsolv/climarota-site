@@ -225,12 +225,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   box-shadow: 0 8px 25px rgba(29, 49, 35, .17);
 }
 .map-column.is-navigating .route-card { display: none; }
-.vehicle-nav-map { position: absolute; z-index: 500; bottom: 22px; left: 15px; width: calc(100% - 30px); display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid #a9d9ff; border-radius: 13px; background: rgba(13,35,56,.96); color: white; box-shadow: 0 10px 25px rgba(0,0,0,.25); }
+.vehicle-nav-map { position: absolute; z-index: 500; bottom: 20px; left: 50%; width: min(560px, calc(100% - 30px)); transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid #a9d9ff; border-radius: 16px; background: rgba(13,35,56,.97); color: white; box-shadow: 0 10px 25px rgba(0,0,0,.25); }
 .vehicle-nav-map[hidden] { display: none; }
-.vehicle-nav-map div { display: grid; gap: 3px; min-width: 0; }
-.vehicle-nav-map strong { font-size: 15px; line-height: 1.3; }
-.vehicle-nav-map span { font-size: 11px; color: #c6def0; }
-.vehicle-nav-map button { flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid #a9d9ff; border-radius: 9px; background: #214c6d; color: white; cursor: pointer; }
+.vehicle-nav-map-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.vehicle-nav-map-top > div { display: grid; gap: 2px; min-width: 0; }
+.vehicle-nav-kicker { color: #a9d9ff; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.vehicle-nav-map-top strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-nav-map button { min-height: 34px; padding: 0 10px; border: 1px solid #a9d9ff; border-radius: 9px; background: #214c6d; color: white; font-size: 11px; font-weight: 700; cursor: pointer; }
+.vehicle-nav-map button:hover { background: #2e6388; }
+.vehicle-nav-map-status { margin: 0; color: #d2e3ee; font-size: 11px; line-height: 1.45; }
+.vehicle-nav-map-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.vehicle-nav-map .vehicle-nav-guidance { margin: 3px 0; padding: 9px 11px; border: 1px solid rgba(169,217,255,.25); border-radius: 10px; background: rgba(64,122,160,.18); }
+.vehicle-nav-map .vehicle-nav-guidance strong { color: #fff; font-size: 19px; }
+.vehicle-nav-map .vehicle-nav-guidance span { font-size: 11px; }
+.vehicle-position-icon { display: grid; place-items: center; border: 3px solid white; border-radius: 50%; background: #3478e5; color: white; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.vehicle-position-arrow { display: block; font-size: 18px; line-height: 1; transform-origin: center; }
 
 .route-icon { display: grid; width: 37px; height: 37px; flex: 0 0 auto; place-items: center; border-radius: 11px; background: #eaf5dd; color: #4e7628; font-size: 21px; }
 .route-copy { display: grid; gap: 3px; min-width: 0; }
@@ -341,13 +350,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .weather-stats small { margin-bottom: 2px; color: #91a198; font-size: 10px; }
 .weather-stats strong { color: #e9f0eb; font-size: 11px; font-weight: 600; }
 
-.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel, .discovery-panel, .vehicle-nav-panel { padding: 17px 18px; }
-.vehicle-nav-actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
-.vehicle-nav-actions .journey-save { margin-top: 0; }
+.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 17px 18px; }
 .vehicle-nav-guidance { display: grid; gap: 4px; margin-top: 13px; padding: 14px; border: 1px solid rgba(198,243,107,.34); border-radius: 11px; background: rgba(198,243,107,.08); }
 .vehicle-nav-guidance strong { color: #e5ffb2; font-size: 17px; line-height: 1.35; }
 .vehicle-nav-guidance span { color: #bfd1c1; font-size: 11px; }
-.vehicle-nav-panel [hidden] { display: none; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; }
 .section-heading h2 { margin: 4px 0 0; font: 700 15px "Manrope", sans-serif; letter-spacing: -.2px; }
 .forecast-label { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: #a9b8ae; font-size: 9px; font-weight: 700; letter-spacing: .8px; }
@@ -468,8 +474,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   .brand { font-size: 19px; }
   .gps-button, .track-button { gap: 4px; padding: 0 6px; font-size: 9px; }
   .map-column { height: 390px; min-height: 390px; }
-  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel, .discovery-panel, .vehicle-nav-panel { padding: 14px 12px; }
+  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 14px 12px; }
   .operations-panel, .authority-panel, .storm-safety-panel { padding: 14px 12px; }
   .route-weather-row { grid-template-columns: 35px minmax(0, 1fr); gap: 7px; }
   .route-risk { grid-column: 2; justify-self: start; }
+}
+
+body.is-driving { overflow: hidden; }
+body.is-driving .topbar, body.is-driving .workspace-nav, body.is-driving .weather-column { display: none; }
+body.is-driving .map-column { position: fixed; inset: 0; z-index: 1000; width: 100vw; height: 100dvh; min-height: 0; margin: 0; border: 0; border-radius: 0; }
+body.is-driving .map-toolbar, body.is-driving .route-card { display: none; }
+body.is-driving .map-attribution { right: 10px; bottom: min(235px, 34vh); }
+body.is-driving .vehicle-nav-map { bottom: 12px; }
+
+@media (max-width: 720px) {
+  body.is-driving .map-column { height: 100dvh; min-height: 0; }
+  body.is-driving .vehicle-nav-map { bottom: 0; width: 100%; padding: 13px 15px calc(13px + env(safe-area-inset-bottom)); border-radius: 17px 17px 0 0; }
+  body.is-driving .map-attribution { bottom: min(245px, 38vh); }
 }

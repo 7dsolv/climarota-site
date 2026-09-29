@@ -67,11 +67,9 @@ const elements = {
   rentalDays: document.querySelector("#rental-days"),
   rentalDailyPrice: document.querySelector("#rental-daily-price"),
   journeyEstimate: document.querySelector("#journey-estimate"),
-  journeyWaze: document.querySelector("#journey-waze"),
-  journeyMaps: document.querySelector("#journey-maps"),
   journeyHotels: document.querySelector("#journey-hotels"),
   journeyCars: document.querySelector("#journey-cars"),
-  vehicleNavPanel: document.querySelector("#vehicle-nav-panel"),
+  openDrivingMap: document.querySelector("#open-driving-map"),
   vehicleNavToggle: document.querySelector("#vehicle-nav-toggle"),
   vehicleNavVoice: document.querySelector("#vehicle-nav-voice"),
   vehicleNavGuidance: document.querySelector("#vehicle-nav-guidance"),
@@ -80,8 +78,7 @@ const elements = {
   vehicleNavEta: document.querySelector("#vehicle-nav-eta"),
   vehicleNavStatus: document.querySelector("#vehicle-nav-status"),
   vehicleNavMap: document.querySelector("#vehicle-nav-map"),
-  vehicleNavMapNext: document.querySelector("#vehicle-nav-map-next"),
-  vehicleNavMapDistance: document.querySelector("#vehicle-nav-map-distance"),
+  vehicleNavMapDestination: document.querySelector("#vehicle-nav-map-destination"),
   vehicleNavMapStop: document.querySelector("#vehicle-nav-map-stop"),
   stayCheckin: document.querySelector("#stay-checkin"),
   stayCheckout: document.querySelector("#stay-checkout"),
@@ -243,6 +240,7 @@ let vehicleNavLastRerouteAt = 0;
 let vehicleNavSpeechKey = "";
 let vehicleNavVoiceEnabled = true;
 let vehicleNavRouteLoading = false;
+let vehicleNavLastPosition = null;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -563,7 +561,6 @@ async function calculateRoute(target) {
   clearDiscoveries();
   elements.discoveryCenter.querySelector('option[value="destination"]').disabled = false;
   elements.discoveryCenter.querySelector('option[value="route"]').disabled = false;
-  elements.vehicleNavPanel.hidden = false;
   clearRouteLayers();
   if (destinationMarker) map.removeLayer(destinationMarker);
   const destinationPopup = document.createElement("span");
@@ -583,34 +580,8 @@ async function calculateRoute(target) {
   elements.routeWeatherList.replaceChildren();
   currentTripSnapshot = null;
   savedRouteIndexes = new Set();
-
-  const tasks = await Promise.allSettled([
-    fetchDestinationWeather(target),
-    window.ClimaRotaRouteAnalysis.analyzeRoutes(routes.map((route) => ({
-      geometry: route.geometry,
-      durationSeconds: route.duration,
-    }))),
-  ]);
-  if (requestVersion !== routeRequestVersion) return false;
-  const destinationResult = tasks[0];
-  const routeWeatherResult = tasks[1];
-  if (destinationResult.status === "rejected") {
-    elements.destinationDescription.textContent = "Previsão temporariamente indisponível";
-  } else {
-    renderDestinationWeather(destinationResult.value);
-  }
-  if (routeWeatherResult.status === "rejected") {
-    elements.analysisSummary.textContent = routeWeatherResult.reason.message;
-    elements.routeWeatherList.replaceChildren();
-    elements.routeAnalysis.classList.add("analysis-error");
-    routeChoices = routes.map((route) => ({ ...route, weatherSamples: null }));
-  } else {
-    elements.routeAnalysis.classList.remove("analysis-error");
-    routeChoices = routes.map((route, index) => ({
-      ...route,
-      weatherSamples: routeWeatherResult.value[index],
-    }));
-  }
+  routeChoices = routes.map((route) => ({ ...route, weatherSamples: null }));
+  const plannedChoices = routeChoices;
   selectedRouteIndex = routeChoices.reduce(
     (fastestIndex, route, index) => (
       route.duration < routeChoices[fastestIndex].duration ? index : fastestIndex
@@ -619,10 +590,33 @@ async function calculateRoute(target) {
   );
   renderRouteOptions();
   selectRoute(selectedRouteIndex, true);
-  const errors = tasks
-    .filter((task) => task.status === "rejected")
-    .map((task) => task.reason.message);
-  if (errors.length) throw new Error(errors.join(" "));
+
+  Promise.allSettled([
+    fetchDestinationWeather(target),
+    window.ClimaRotaRouteAnalysis.analyzeRoutes(routes.map((route) => ({
+      geometry: route.geometry,
+      durationSeconds: route.duration,
+    }))),
+  ]).then((tasks) => {
+    if (requestVersion !== routeRequestVersion || destination !== target) return;
+    const [destinationResult, routeWeatherResult] = tasks;
+    if (destinationResult.status === "rejected") {
+      elements.destinationDescription.textContent = "Previsão temporariamente indisponível";
+    } else {
+      renderDestinationWeather(destinationResult.value);
+    }
+    if (routeChoices !== plannedChoices) return;
+    if (routeWeatherResult.status === "rejected") {
+      elements.analysisSummary.textContent = routeWeatherResult.reason?.message || "Previsão das rotas indisponível.";
+      elements.routeWeatherList.replaceChildren();
+      elements.routeAnalysis.classList.add("analysis-error");
+    } else {
+      elements.routeAnalysis.classList.remove("analysis-error");
+      plannedChoices.forEach((route, index) => { route.weatherSamples = routeWeatherResult.value[index]; });
+    }
+    renderRouteOptions();
+    if (!document.body.classList.contains("is-driving")) selectRoute(selectedRouteIndex);
+  });
   return true;
 }
 
@@ -723,7 +717,7 @@ function selectRoute(index, fitMap = false) {
   boundsLayers.push(routeLayer);
   if (fitMap) {
     const bounds = L.featureGroup(boundsLayers).getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [45, 45] });
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [45, 45], animate: false });
   }
 
   const route = routeChoices[index];
@@ -758,8 +752,6 @@ function renderJourney() {
   }
   elements.journeyPanel.hidden = false;
   const links = window.ClimaRotaJourneyPlanner.buildTravelLinks(destination);
-  elements.journeyWaze.href = links.waze;
-  elements.journeyMaps.href = links.googleMaps;
   elements.journeyHotels.href = links.hotels;
   elements.journeyCars.href = links.rentalCars;
   renderStayLink();
@@ -1584,11 +1576,52 @@ function speakVehicleInstruction(message, key) {
   window.speechSynthesis.speak(utterance);
 }
 
+function enterDrivingMode(label = destination?.name, fitRoute = true) {
+  if (!map) return;
+  map.stop();
+  document.body.classList.add("is-driving");
+  document.documentElement.style.overflow = "hidden";
+  elements.vehicleNavMap.hidden = false;
+  clearRouteLayers();
+  if (currentMarker && map.hasLayer(currentMarker)) map.removeLayer(currentMarker);
+  elements.vehicleNavMapDestination.textContent = label || "Buscando destino";
+  elements.vehicleNavGuidance.hidden = true;
+  elements.vehicleNavStatus.textContent = "Aguardando GPS do aparelho…";
+  window.requestAnimationFrame(() => {
+    map.invalidateSize();
+    if (vehicleNavMarker) return;
+    const route = fitRoute ? routeChoices[selectedRouteIndex] : null;
+    if (route?.geometry) {
+      const bounds = L.geoJSON(route.geometry).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [45, 45], animate: false });
+    }
+  });
+}
+
+function exitDrivingMode() {
+  const searchButton = elements.destinationForm.querySelector("button");
+  if (searchButton.disabled) {
+    searchRequestVersion += 1;
+    routeRequestVersion += 1;
+    searchButton.disabled = false;
+  }
+  stopVehicleNavigation("Navegação encerrada.");
+  document.body.classList.remove("is-driving");
+  document.documentElement.style.overflow = "";
+  elements.vehicleNavMap.hidden = true;
+  window.requestAnimationFrame(() => {
+    map?.invalidateSize();
+    if (map && currentMarker && !map.hasLayer(currentMarker)) currentMarker.addTo(map);
+    if (routeChoices.length) selectRoute(selectedRouteIndex, true);
+  });
+}
+
 function stopVehicleNavigation(message = "Navegação parada. O GPS deixou de ser acompanhado.") {
   vehicleNavGeneration += 1;
   if (vehicleNavWatchId !== null) navigator.geolocation.clearWatch(vehicleNavWatchId);
   vehicleNavWatchId = null;
   vehicleNavRoute = null;
+  vehicleNavLastPosition = null;
   vehicleNavRouteLoading = false;
   vehicleNavOffRoute = 0;
   vehicleNavSpeechKey = "";
@@ -1599,9 +1632,9 @@ function stopVehicleNavigation(message = "Navegação parada. O GPS deixou de se
   vehicleNavMarker = null;
   vehicleNavAccuracy = null;
   vehicleNavLayer = null;
-  elements.vehicleNavToggle.textContent = "Iniciar navegação";
+  elements.vehicleNavToggle.textContent = "Tentar GPS";
   elements.vehicleNavGuidance.hidden = true;
-  elements.vehicleNavMap.hidden = true;
+  elements.vehicleNavMap.hidden = !document.body.classList.contains("is-driving");
   document.querySelector(".map-column").classList.remove("is-navigating");
   elements.vehicleNavStatus.textContent = message;
 }
@@ -1630,18 +1663,18 @@ async function requestVehicleRoute(point, generation, isReroute = false) {
     const route = window.ClimaRotaVehicleNavigation.prepareRoute(raw);
     vehicleNavRoute = route;
     displayVehicleRoute(route);
-    if (isReroute) {
-      clearRouteLayers();
-      routeChoices = [{ ...raw, weatherSamples: null }];
-      selectedRouteIndex = 0;
-      elements.routeOptionsPanel.hidden = true;
-      elements.routeAnalysis.hidden = true;
-      elements.routeSummary.textContent = `${(raw.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · rota recalculada · sem trânsito ao vivo`;
-      renderJourney();
-    }
+    clearRouteLayers();
+    routeChoices = [{ ...raw, weatherSamples: null }];
+    selectedRouteIndex = 0;
+    currentTripSnapshot = null;
+    elements.routeOptionsPanel.hidden = true;
+    elements.routeAnalysis.hidden = true;
+    elements.routeSummary.textContent = `${(raw.distance / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km · rota pelo GPS atual · sem trânsito ao vivo`;
+    renderJourney();
     vehicleNavOffRoute = 0;
     vehicleNavSpeechKey = "";
     elements.vehicleNavStatus.textContent = isReroute ? "Rota recalculada com o GPS atual." : "Navegação ativa com o GPS atual.";
+    if (vehicleNavLastPosition) updateVehiclePosition(vehicleNavLastPosition, generation);
   } catch (error) {
     if (generation === vehicleNavGeneration) {
       elements.vehicleNavStatus.textContent = `Não foi possível ${isReroute ? "recalcular" : "iniciar"} a rota: ${error.message}. Verifique a conexão.`;
@@ -1653,6 +1686,7 @@ async function requestVehicleRoute(point, generation, isReroute = false) {
 
 function updateVehiclePosition(position, generation) {
   if (generation !== vehicleNavGeneration || !destination) return;
+  vehicleNavLastPosition = position;
   const { coords } = position;
   const point = { lat: coords.latitude, lon: coords.longitude };
   const accuracy = coords.accuracy;
@@ -1660,26 +1694,35 @@ function updateVehiclePosition(position, generation) {
     || !Number.isFinite(accuracy) || accuracy < 0
     || !Number.isFinite(position.timestamp) || Math.abs(Date.now() - position.timestamp) > 20000) {
     elements.vehicleNavStatus.textContent = "GPS sem posição recente e válida. Aguardando novo sinal…";
-    elements.vehicleNavMapNext.textContent = "GPS sem posição recente";
-    elements.vehicleNavMapDistance.textContent = "Confira a via e aguarde novo sinal";
+    elements.vehicleNavGuidance.hidden = false;
+    elements.vehicleNavNext.textContent = "GPS sem posição recente";
+    elements.vehicleNavDistance.textContent = "Confira a via e aguarde novo sinal";
     return;
   }
   const latLng = [point.lat, point.lon];
   if (!vehicleNavMarker) {
-    vehicleNavMarker = L.circleMarker(latLng, { radius: 11, color: "#fff", weight: 3,
-      fillColor: "#3478e5", fillOpacity: 1 }).addTo(map).bindPopup("Posição do aparelho");
+    vehicleNavMarker = L.marker(latLng, {
+      icon: L.divIcon({ className: "vehicle-position-icon", html: '<span class="vehicle-position-arrow" aria-hidden="true">▲</span>', iconSize: [36, 36], iconAnchor: [18, 18] }),
+      zIndexOffset: 1000,
+    }).addTo(map).bindPopup("Posição do aparelho");
     vehicleNavAccuracy = L.circle(latLng, { radius: accuracy, color: "#3478e5",
       fillColor: "#3478e5", fillOpacity: 0.08, weight: 1 }).addTo(map);
   } else {
     vehicleNavMarker.setLatLng(latLng);
     vehicleNavAccuracy.setLatLng(latLng).setRadius(accuracy);
   }
-  map.setView(latLng, Math.max(map.getZoom(), 15), { animate: false });
+  if (Number.isFinite(coords.heading)) {
+    vehicleNavMarker.getElement()?.querySelector(".vehicle-position-arrow")?.style.setProperty("transform", `rotate(${coords.heading}deg)`);
+  }
+  map.stop();
+  map.setView(latLng, Math.max(map.getZoom(), 15), { animate: false, reset: true });
   currentLocation = { ...currentLocation, ...point, name: "Sua localização" };
+  currentMarker?.setLatLng(latLng).bindPopup("Sua localização");
   if (accuracy > 100) {
     elements.vehicleNavStatus.textContent = `GPS impreciso (±${Math.round(accuracy)} m). Aguarde sinal melhor antes de seguir instruções.`;
-    elements.vehicleNavMapNext.textContent = "GPS impreciso";
-    elements.vehicleNavMapDistance.textContent = `Precisão ±${Math.round(accuracy)} m · confira a via`;
+    elements.vehicleNavGuidance.hidden = false;
+    elements.vehicleNavNext.textContent = "GPS impreciso";
+    elements.vehicleNavDistance.textContent = `Precisão ±${Math.round(accuracy)} m · confira a via`;
     return;
   }
   if (!vehicleNavRoute) {
@@ -1717,8 +1760,6 @@ function updateVehiclePosition(position, generation) {
   elements.vehicleNavGuidance.hidden = false;
   elements.vehicleNavNext.textContent = instruction;
   elements.vehicleNavDistance.textContent = `${navigation.formatDistance(progress.maneuverMeters)} até a próxima manobra · ${navigation.formatDistance(progress.remainingMeters)} restantes`;
-  elements.vehicleNavMapNext.textContent = instruction;
-  elements.vehicleNavMapDistance.textContent = elements.vehicleNavDistance.textContent;
   elements.vehicleNavEta.textContent = `Chegada aproximada: ${new Date(Date.now() + progress.remainingSeconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · sem trânsito ao vivo`;
   if (accuracy > 50 || progress.distanceMeters > Math.max(80, accuracy * 2)) {
     elements.vehicleNavStatus.textContent = "Posição fora da rota ou sinal incerto. Confira a via e aguarde o recálculo.";
@@ -1734,6 +1775,7 @@ function startVehicleNavigation() {
     elements.vehicleNavStatus.textContent = "Trace uma rota de carro antes de iniciar a navegação.";
     return;
   }
+  enterDrivingMode();
   if (!navigator.geolocation) {
     elements.vehicleNavStatus.textContent = "Este navegador não oferece acesso ao GPS.";
     return;
@@ -1744,15 +1786,17 @@ function startVehicleNavigation() {
   vehicleNavSpeechKey = "";
   speakVehicleInstruction("Navegação iniciada. Aguarde a posição do GPS antes de dirigir.", "start");
   elements.vehicleNavStatus.textContent = "Solicitando GPS em tempo real…";
-  elements.vehicleNavToggle.textContent = "Parar navegação";
-  elements.vehicleNavMap.hidden = false;
+  elements.vehicleNavToggle.textContent = "Pausar GPS";
   document.querySelector(".map-column").classList.add("is-navigating");
   try {
     vehicleNavWatchId = navigator.geolocation.watchPosition(
       (position) => updateVehiclePosition(position, generation),
-      (error) => stopVehicleNavigation(error.code === 1
-        ? "Permissão GPS negada. Autorize a localização no navegador."
-        : "GPS indisponível. Verifique o sinal e tente novamente."),
+      (error) => {
+        if (generation !== vehicleNavGeneration) return;
+        stopVehicleNavigation(error.code === 1
+          ? "Permissão GPS negada. Autorize a localização no navegador."
+          : "GPS indisponível. Verifique o sinal e tente novamente.");
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     );
   } catch (error) {
@@ -1963,7 +2007,7 @@ function clearPntSimulation() {
 }
 
 function clearRoute() {
-  stopVehicleNavigation();
+  exitDrivingMode();
   routeRequestVersion += 1;
   searchRequestVersion += 1;
   destination = null;
@@ -1972,7 +2016,6 @@ function clearRoute() {
   elements.discoveryCenter.value = "origin";
   elements.discoveryCenter.querySelector('option[value="destination"]').disabled = true;
   elements.discoveryCenter.querySelector('option[value="route"]').disabled = true;
-  elements.vehicleNavPanel.hidden = true;
   clearRouteLayers();
   routeChoices = [];
   selectedRouteIndex = 0;
@@ -2000,16 +2043,24 @@ elements.destinationForm.addEventListener("submit", async (event) => {
     return;
   }
   elements.destinationForm.querySelector("button").disabled = true;
+  enterDrivingMode(query, false);
+  elements.vehicleNavStatus.textContent = "Buscando destino e calculando o caminho…";
   showNotice("Buscando destino e calculando trajeto…");
   try {
     const target = await findDestination(query);
     if (requestVersion !== searchRequestVersion) return;
+    elements.vehicleNavMapDestination.textContent = target.name;
+    elements.vehicleNavStatus.textContent = "Traçando caminho de carro…";
     const completed = await calculateRoute(target);
     if (!completed) return;
     if (requestVersion !== searchRequestVersion) return;
     showNotice("");
+    startVehicleNavigation();
   } catch (error) {
-    if (requestVersion === searchRequestVersion) showNotice(error.message, true);
+    if (requestVersion === searchRequestVersion) {
+      showNotice(error.message, true);
+      elements.vehicleNavStatus.textContent = error.message;
+    }
   } finally {
     elements.destinationForm.querySelector("button").disabled = false;
   }
@@ -2020,6 +2071,7 @@ elements.workspaceButtons.forEach((button) => {
   button.addEventListener("click", () => setWorkspaceMode(button.dataset.selectWorkspace));
 });
 elements.clearRoute.addEventListener("click", clearRoute);
+elements.openDrivingMap.addEventListener("click", startVehicleNavigation);
 elements.journeyConsumption.addEventListener("input", renderJourney);
 elements.journeyFuelPrice.addEventListener("input", renderJourney);
 [elements.journeyVehicle, elements.rentalDays, elements.rentalDailyPrice]
@@ -2251,7 +2303,7 @@ elements.vehicleNavToggle.addEventListener("click", () => {
   if (vehicleNavWatchId === null) startVehicleNavigation();
   else stopVehicleNavigation();
 });
-elements.vehicleNavMapStop.addEventListener("click", () => stopVehicleNavigation());
+elements.vehicleNavMapStop.addEventListener("click", exitDrivingMode);
 elements.vehicleNavVoice.addEventListener("click", () => {
   vehicleNavVoiceEnabled = !vehicleNavVoiceEnabled;
   elements.vehicleNavVoice.setAttribute("aria-pressed", String(vehicleNavVoiceEnabled));
