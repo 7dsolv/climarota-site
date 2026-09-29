@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#101915">
     <meta name="description" content="ClimaRota combina previsão do tempo, localização e planejamento de trajetos.">
     <title>ClimaRota — tempo e caminho</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://tile.openstreetmap.org">
     <link rel="preconnect" href="https://api.open-meteo.com">
@@ -24,9 +25,10 @@
     <script src="aceinna-track.js" defer></script>
     <script src="pnt-simulator.js" defer></script>
     <script src="event-planner.js" defer></script>
+    <script src="journey-planner.js" defer></script>
     <script src="app.js" defer></script>
   </head>
-  <body>
+  <body data-workspace-mode="all">
     <div class="app-shell">
       <header class="topbar">
         <a class="brand" href="#" aria-label="ClimaRota, início">
@@ -42,6 +44,13 @@
         </button>
       </header>
 
+      <nav class="workspace-nav" aria-label="Área de trabalho">
+        <button type="button" data-select-workspace="all" aria-pressed="true">Visão geral</button>
+        <button type="button" data-select-workspace="travel" aria-pressed="false">Viagem</button>
+        <button type="button" data-select-workspace="field" aria-pressed="false">Trabalho de campo</button>
+        <button type="button" data-select-workspace="lab" aria-pressed="false">Lab experimental</button>
+      </nav>
+
       <main class="main-layout">
         <section class="map-column" aria-label="Mapa e busca de destino">
           <div class="map-toolbar">
@@ -53,33 +62,33 @@
             </form>
             <p class="map-hint">Busque um destino para ver o trajeto estimado.</p>
             <div class="map-actions" role="toolbar" aria-label="Ferramentas de campo para o mapa">
-              <button type="button" data-map-mode="site" aria-pressed="false">＋ Ponto de campo</button>
-              <button type="button" data-map-mode="line" aria-pressed="false">↔ Medir linha</button>
-              <button type="button" data-map-mode="area" aria-pressed="false">⬡ Medir área</button>
-              <button type="button" data-map-mode="event" aria-pressed="false">⚑ Ponto de encontro</button>
-              <button type="button" id="import-mins-trajectory">Importar trilha MINS</button>
-              <button type="button" id="clear-mins-trajectory" hidden>Limpar trilha MINS</button>
-              <button type="button" id="import-aceinna-trajectory">Importar CSV GNSS/INS</button>
-              <button type="button" id="clear-aceinna-trajectory" hidden>Limpar trilha CSV</button>
-              <button type="button" id="finish-measurement" hidden>Concluir medição</button>
+              <button type="button" data-map-mode="site" data-workspace="field" aria-pressed="false">＋ Ponto de campo</button>
+              <button type="button" data-map-mode="line" data-workspace="field" aria-pressed="false">↔ Medir linha</button>
+              <button type="button" data-map-mode="area" data-workspace="field" aria-pressed="false">⬡ Medir área</button>
+              <button type="button" data-map-mode="event" data-workspace="travel" aria-pressed="false">⚑ Ponto de encontro</button>
+              <button type="button" id="import-mins-trajectory" data-workspace="lab">Importar trilha MINS</button>
+              <button type="button" id="clear-mins-trajectory" data-workspace="lab" hidden>Limpar trilha MINS</button>
+              <button type="button" id="import-aceinna-trajectory" data-workspace="lab">Importar CSV GNSS/INS</button>
+              <button type="button" id="clear-aceinna-trajectory" data-workspace="lab" hidden>Limpar trilha CSV</button>
+              <button type="button" id="finish-measurement" data-workspace="field" hidden>Concluir medição</button>
             </div>
             <input id="mins-trajectory-file" type="file" accept=".txt,.csv,text/plain,text/csv" hidden>
             <input id="aceinna-trajectory-file" type="file" accept=".csv,text/csv,text/plain" hidden>
-            <p class="measurement-status" id="mins-trajectory-status" aria-live="polite" hidden></p>
-            <p class="measurement-status" id="aceinna-trajectory-status" aria-live="polite" hidden></p>
+            <p class="measurement-status" id="mins-trajectory-status" data-workspace="lab" aria-live="polite" hidden></p>
+            <p class="measurement-status" id="aceinna-trajectory-status" data-workspace="lab" aria-live="polite" hidden></p>
             <div class="map-layer-row">
               <label for="map-layer">Mapa</label>
               <select id="map-layer" aria-label="Camada do mapa">
                 <option value="street">Ruas</option>
                 <option value="terrain">Relevo</option>
               </select>
-              <button type="button" id="clear-measurements">Limpar desenhos</button>
+              <button type="button" id="clear-measurements" data-workspace="field">Limpar desenhos</button>
             </div>
-            <p class="measurement-status" id="measurement-status" aria-live="polite" hidden></p>
+            <p class="measurement-status" id="measurement-status" data-workspace="field" aria-live="polite" hidden></p>
           </div>
           <div id="map" role="application" aria-label="Mapa interativo"></div>
           <div class="map-attribution">Mapa © OpenStreetMap · rotas © OSRM</div>
-          <div class="route-card" id="route-card" hidden>
+          <div class="route-card" id="route-card" data-workspace="travel" hidden>
             <div class="route-icon" aria-hidden="true">↗</div>
             <div class="route-copy">
               <span class="eyebrow">ROTA ESTIMADA</span>
@@ -119,7 +128,7 @@
             </div>
           </section>
 
-          <section class="panel operations-panel" aria-labelledby="operations-title">
+          <section class="panel operations-panel" data-workspace="field" aria-labelledby="operations-title">
             <div class="section-heading">
               <div><span class="eyebrow">PLANEJAMENTO DE CAMPO</span><h2 id="operations-title">Condições para a equipe</h2></div>
               <span class="work-status-badge" id="work-status-badge">Aguardando</span>
@@ -148,7 +157,7 @@
             <button class="text-button" id="export-sites" type="button" hidden>Exportar anotações</button>
           </section>
 
-          <section class="panel event-panel" aria-labelledby="event-title">
+          <section class="panel event-panel" data-workspace="travel" aria-labelledby="event-title">
             <div class="section-heading">
               <div><span class="eyebrow">MODO EVENTO</span><h2 id="event-title">Shows e encontros</h2></div>
               <span class="forecast-label">PLANEJAR</span>
@@ -182,7 +191,7 @@
             </div>
           </section>
 
-          <section class="panel pnt-panel" aria-labelledby="pnt-title">
+          <section class="panel pnt-panel" data-workspace="lab" aria-labelledby="pnt-title">
             <div class="section-heading">
               <div><span class="eyebrow">BANCADA PNT LOCAL</span><h2 id="pnt-title">Simulador GNSS + INS</h2></div>
               <span class="forecast-label">SINTÉTICO</span>
@@ -266,7 +275,7 @@
             <a class="authority-link" id="authority-link" href="https://www.gov.br/inmet/pt-br" target="_blank" rel="noopener noreferrer">Abrir INMET</a>
           </section>
 
-          <section class="panel destination-weather" id="destination-weather" hidden>
+          <section class="panel destination-weather" id="destination-weather" data-workspace="travel" hidden>
             <div class="section-heading">
               <div><span class="eyebrow">NO DESTINO</span><h2 id="destination-weather-name">Condições previstas</h2></div>
               <span class="destination-symbol" id="destination-symbol" aria-hidden="true">☁</span>
@@ -278,7 +287,7 @@
             </div>
           </section>
 
-          <section class="panel route-options-panel" id="route-options-panel" aria-labelledby="route-options-title" hidden>
+          <section class="panel route-options-panel" id="route-options-panel" data-workspace="travel" aria-labelledby="route-options-title" hidden>
             <div class="section-heading">
               <div><span class="eyebrow">COMPARADOR CLIMÁTICO</span><h2 id="route-options-title">Opções de rota</h2></div>
               <span class="forecast-label">SEM TRÂNSITO AO VIVO</span>
@@ -287,7 +296,32 @@
             <div class="route-options-list" id="route-options-list" role="group" aria-label="Selecionar rota"></div>
           </section>
 
-          <section class="panel route-analysis" id="route-analysis" aria-labelledby="route-analysis-title" hidden>
+          <section class="panel journey-panel" id="journey-panel" data-workspace="travel" aria-labelledby="journey-title" hidden>
+            <div class="section-heading">
+              <div><span class="eyebrow">VIAGEM DE CARRO</span><h2 id="journey-title">Seu plano de deslocamento</h2></div>
+              <span class="forecast-label">ESTIMATIVAS</span>
+            </div>
+            <p class="journey-note">Calcule o combustível com os valores do seu veículo. O preço informado é manual; pedágios, estacionamento e trânsito ao vivo não entram na conta.</p>
+            <div class="journey-inputs">
+              <label for="journey-consumption">Consumo do carro (km/L)
+                <input class="site-input" id="journey-consumption" type="number" min="0.1" max="100" step="any" inputmode="decimal" placeholder="Ex.: 10">
+              </label>
+              <label for="journey-fuel-price">Preço por litro (R$)
+                <input class="site-input" id="journey-fuel-price" type="number" min="0.01" max="1000" step="any" inputmode="decimal" placeholder="Informe o valor">
+              </label>
+            </div>
+            <p class="journey-estimate" id="journey-estimate" aria-live="polite">Informe consumo e preço para estimar o combustível da rota escolhida.</p>
+            <div class="journey-links">
+              <a id="journey-waze" target="_blank" rel="noopener noreferrer">Navegar no Waze</a>
+              <a id="journey-maps" target="_blank" rel="noopener noreferrer">Abrir no Google Maps</a>
+              <a id="journey-hotels" target="_blank" rel="noopener noreferrer">Buscar hotéis no destino</a>
+            </div>
+            <p class="journey-note">A navegação e a busca de hotéis abrem serviços externos, que podem mostrar outra rota e preços ou disponibilidade próprios. Confirme tudo no serviço escolhido antes de sair ou reservar.</p>
+            <button class="journey-save" id="save-journey" type="button">Guardar esta rota no diário</button>
+            <p class="journey-note" id="journey-save-note">Ative o diário local para guardar a rota selecionada.</p>
+          </section>
+
+          <section class="panel route-analysis" id="route-analysis" data-workspace="travel" aria-labelledby="route-analysis-title" hidden>
             <div class="section-heading">
               <div><span class="eyebrow">FERRAMENTAS CLIMÁTICAS</span><h2 id="route-analysis-title">Clima ao longo do caminho</h2></div>
               <span class="analysis-badge">5 pontos</span>
@@ -306,7 +340,7 @@
             <p><strong>Observadores oficiais:</strong> registre dados apenas se estiver formalmente autorizado, treinado e operando de local seguro.</p>
           </section>
 
-          <section class="panel history-panel" aria-labelledby="history-title">
+          <section class="panel history-panel" data-workspace="travel" aria-labelledby="history-title">
             <div class="section-heading">
               <div><span class="eyebrow">AVALIAÇÃO AUDITÁVEL</span><h2 id="history-title">Diário e qualidade</h2></div>
               <span class="forecast-label">NESTE APARELHO</span>
