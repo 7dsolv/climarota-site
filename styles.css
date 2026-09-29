@@ -42,7 +42,8 @@ body[data-workspace-mode="travel"] [data-workspace="lab"],
 body[data-workspace-mode="field"] [data-workspace="travel"],
 body[data-workspace-mode="field"] [data-workspace="lab"],
 body[data-workspace-mode="lab"] [data-workspace="travel"],
-body[data-workspace-mode="lab"] [data-workspace="field"] { display: none !important; }
+body[data-workspace-mode="lab"] [data-workspace="field"],
+body[data-workspace-mode="lab"] [data-workspace="journey-discovery"] { display: none !important; }
 
 .topbar {
   height: 76px;
@@ -333,7 +334,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .weather-stats small { margin-bottom: 2px; color: #91a198; font-size: 10px; }
 .weather-stats strong { color: #e9f0eb; font-size: 11px; font-weight: 600; }
 
-.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel { padding: 17px 18px; }
+.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 17px 18px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; }
 .section-heading h2 { margin: 4px 0 0; font: 700 15px "Manrope", sans-serif; letter-spacing: -.2px; }
 .forecast-label { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: #a9b8ae; font-size: 9px; font-weight: 700; letter-spacing: .8px; }
@@ -374,11 +375,34 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .journey-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 13px; }
 .journey-inputs label { display: grid; gap: 6px; color: #c0cdc3; font-size: 10px; }
 .journey-estimate { margin: 12px 0 0; color: var(--lime); font-size: 12px; font-weight: 700; line-height: 1.5; }
+.rental-planner { margin-top: 12px; }
+.rental-planner > label { display: grid; gap: 6px; color: #c0cdc3; font-size: 10px; }
 .journey-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .journey-links a, .journey-save { padding: 8px 10px; border: 1px solid rgba(198, 243, 107, .25); border-radius: 8px; background: #253629; color: #e3f2db; font-size: 10px; font-weight: 700; text-decoration: none; cursor: pointer; }
 .journey-links a:hover, .journey-save:hover { border-color: var(--lime); }
 .journey-save { margin-top: 12px; }
 .journey-save:disabled { cursor: default; opacity: .5; }
+.stay-planner { margin-top: 17px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); }
+.stay-planner h3 { margin: 0 0 10px; font: 700 12px "Manrope", sans-serif; }
+.stay-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.stay-inputs label, .discovery-actions label { display: grid; gap: 6px; min-width: 0; color: #c0cdc3; font-size: 10px; }
+.stay-booking-link { display: inline-block; margin-top: 11px; padding: 9px 11px; border: 1px solid rgba(198, 243, 107, .35); border-radius: 8px; background: #31482c; color: #e8f8df; font-size: 10px; font-weight: 700; text-decoration: none; }
+.stay-booking-link:hover { border-color: var(--lime); }
+.stay-booking-link[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+.discovery-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; margin-top: 13px; }
+.discovery-actions label { flex: 1 1 160px; }
+.discovery-actions .journey-save { margin-top: 0; }
+.discovery-status { margin: 11px 0 0; color: #b9c9bd; font-size: 10px; line-height: 1.5; }
+.discovery-list { display: grid; gap: 9px; margin-top: 12px; }
+.discovery-card { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); }
+.discovery-card-header { display: flex; justify-content: space-between; gap: 8px; }
+.discovery-card-header strong { font-size: 11px; }
+.discovery-card-header span { flex: 0 0 auto; color: var(--lime); font-size: 10px; }
+.discovery-card small { display: block; margin-top: 4px; color: #9fb0a3; font-size: 9px; }
+.discovery-card p { margin: 8px 0; color: #c9d8cc; font-size: 10px; line-height: 1.5; }
+.discovery-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.discovery-card-actions button, .discovery-card-actions a { padding: 6px 8px; border: 1px solid rgba(198,243,107,.22); border-radius: 7px; background: #253629; color: #e3f2db; font-size: 9px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.discovery-card-actions button:disabled { opacity: .6; cursor: default; }
 .destination-symbol { color: var(--lime); font-size: 24px; }
 .destination-details { display: flex; align-items: center; gap: 9px; margin-top: 13px; }
 .destination-details > strong { font: 600 28px "Manrope", sans-serif; }
@@ -431,7 +455,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   .brand { font-size: 19px; }
   .gps-button, .track-button { gap: 4px; padding: 0 6px; font-size: 9px; }
   .map-column { height: 390px; min-height: 390px; }
-  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel { padding: 14px 12px; }
+  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 14px 12px; }
   .operations-panel, .authority-panel, .storm-safety-panel { padding: 14px 12px; }
   .route-weather-row { grid-template-columns: 35px minmax(0, 1fr); gap: 7px; }
   .route-risk { grid-column: 2; justify-self: start; }

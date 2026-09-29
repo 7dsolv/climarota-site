@@ -62,10 +62,26 @@ const elements = {
   journeyPanel: document.querySelector("#journey-panel"),
   journeyConsumption: document.querySelector("#journey-consumption"),
   journeyFuelPrice: document.querySelector("#journey-fuel-price"),
+  journeyVehicle: document.querySelector("#journey-vehicle"),
+  rentalInputs: document.querySelector("#rental-inputs"),
+  rentalDays: document.querySelector("#rental-days"),
+  rentalDailyPrice: document.querySelector("#rental-daily-price"),
   journeyEstimate: document.querySelector("#journey-estimate"),
   journeyWaze: document.querySelector("#journey-waze"),
   journeyMaps: document.querySelector("#journey-maps"),
   journeyHotels: document.querySelector("#journey-hotels"),
+  journeyCars: document.querySelector("#journey-cars"),
+  stayCheckin: document.querySelector("#stay-checkin"),
+  stayCheckout: document.querySelector("#stay-checkout"),
+  stayAdults: document.querySelector("#stay-adults"),
+  stayRooms: document.querySelector("#stay-rooms"),
+  stayBookingLink: document.querySelector("#stay-booking-link"),
+  stayStatus: document.querySelector("#stay-status"),
+  discoveryCenter: document.querySelector("#discovery-center"),
+  discoverMarcos: document.querySelector("#discover-marcos"),
+  clearDiscoveries: document.querySelector("#clear-discoveries"),
+  discoveryStatus: document.querySelector("#discovery-status"),
+  discoveryList: document.querySelector("#discovery-list"),
   saveJourney: document.querySelector("#save-journey"),
   journeySaveNote: document.querySelector("#journey-save-note"),
   destinationWeather: document.querySelector("#destination-weather"),
@@ -170,6 +186,11 @@ let currentLocation = { ...INITIAL_LOCATION };
 let destination = null;
 let currentTripSnapshot = null;
 let savedRouteIndexes = new Set();
+let discoveries = [];
+let discoveryLayers = [];
+let discoveryAbortController = null;
+let discoveryCache = null;
+const markedPassages = new Set();
 let historyRefreshTimer;
 let streetsLayer;
 let terrainLayer;
@@ -423,6 +444,7 @@ function locateUser() {
         lon: coords.longitude,
         name: "Sua localização",
       };
+      if (elements.discoveryCenter.value === "origin") clearDiscoveries();
       if (currentMarker && map) {
         currentMarker.setLatLng([currentLocation.lat, currentLocation.lon])
           .bindPopup("Sua localização");
@@ -512,6 +534,8 @@ async function calculateRoute(target) {
   }
 
   destination = target;
+  clearDiscoveries();
+  elements.discoveryCenter.querySelector('option[value="destination"]').disabled = false;
   clearRouteLayers();
   if (destinationMarker) map.removeLayer(destinationMarker);
   const destinationPopup = document.createElement("span");
@@ -708,9 +732,13 @@ function renderJourney() {
   elements.journeyWaze.href = links.waze;
   elements.journeyMaps.href = links.googleMaps;
   elements.journeyHotels.href = links.hotels;
+  elements.journeyCars.href = links.rentalCars;
+  renderStayLink();
 
   const consumption = elements.journeyConsumption.value.trim();
   const fuelPrice = elements.journeyFuelPrice.value.trim();
+  const isRental = elements.journeyVehicle.value === "rental";
+  elements.rentalInputs.hidden = !isRental;
   if (!consumption || !fuelPrice) {
     elements.journeyEstimate.textContent = "Informe consumo e preço para estimar o combustível da rota escolhida.";
   } else {
@@ -724,7 +752,19 @@ function renderJourney() {
         style: "currency",
         currency: "BRL",
       });
-      elements.journeyEstimate.textContent = `Combustível estimado: ${estimate.liters.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L · ${cost}, só ida.`;
+      let summary = `Combustível estimado: ${estimate.liters.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L · ${cost}, só ida.`;
+      if (isRental) {
+        const days = elements.rentalDays.value.trim();
+        const dailyPrice = elements.rentalDailyPrice.value.trim();
+        if (!days || !dailyPrice) {
+          summary += " Informe dias e diária para somar o aluguel.";
+        } else {
+          const rentalCost = window.ClimaRotaJourneyPlanner.estimateRentalCost(Number(days), Number(dailyPrice));
+          const currency = (value) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          summary += ` Aluguel informado: ${currency(rentalCost)}. Total parcial: ${currency(estimate.fuelCost + rentalCost)}.`;
+        }
+      }
+      elements.journeyEstimate.textContent = summary;
     } catch (error) {
       elements.journeyEstimate.textContent = error.message;
     }
@@ -739,6 +779,192 @@ function renderJourney() {
       : saved
         ? "Esta rota já foi guardada no diário desta sessão."
         : "A rota escolhida será guardada neste navegador após seu clique.";
+}
+
+function localIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function initializeStayDates() {
+  const today = new Date();
+  const checkin = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const checkout = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
+  elements.stayCheckin.min = localIsoDate(today);
+  elements.stayCheckin.value = localIsoDate(checkin);
+  elements.stayCheckout.min = localIsoDate(checkout);
+  elements.stayCheckout.value = localIsoDate(checkout);
+}
+
+function renderStayLink() {
+  elements.stayBookingLink.removeAttribute("href");
+  elements.stayBookingLink.setAttribute("aria-disabled", "true");
+  elements.stayBookingLink.tabIndex = -1;
+  if (!destination) {
+    elements.stayStatus.textContent = "Trace uma rota para pesquisar hospedagem no destino.";
+    return;
+  }
+  try {
+    if (elements.stayCheckin.value < localIsoDate(new Date())) {
+      throw new Error("Escolha uma data de entrada a partir de hoje.");
+    }
+    const url = window.ClimaRotaJourneyPlanner.buildBookingSearchLink(destination, {
+      checkin: elements.stayCheckin.value,
+      checkout: elements.stayCheckout.value,
+      adults: Number(elements.stayAdults.value),
+      rooms: Number(elements.stayRooms.value),
+    });
+    elements.stayBookingLink.href = url;
+    elements.stayBookingLink.setAttribute("aria-disabled", "false");
+    elements.stayBookingLink.tabIndex = 0;
+    elements.stayStatus.textContent = "A Booking.com mostrará preços e disponibilidade no próprio site. Nenhuma reserva é feita aqui.";
+  } catch (error) {
+    elements.stayStatus.textContent = error.message;
+  }
+}
+
+function clearDiscoveries() {
+  discoveryAbortController?.abort();
+  discoveryAbortController = null;
+  discoveryLayers.forEach((layer) => { if (map?.hasLayer(layer)) map.removeLayer(layer); });
+  discoveryLayers = [];
+  discoveries = [];
+  elements.discoveryList.replaceChildren();
+  elements.clearDiscoveries.hidden = true;
+  elements.discoverMarcos.disabled = false;
+  elements.discoveryStatus.textContent = "Clique em Buscar marcos para explorar pontos do OpenStreetMap.";
+}
+
+function renderDiscoveries() {
+  elements.discoveryList.replaceChildren();
+  const count = discoveries.filter((item) => markedPassages.has(item.id)).length;
+  elements.discoveryStatus.textContent = discoveries.length
+    ? `${discoveries.length} marcos próximos · ${count} passagem(ns) marcada(s) nesta lista. Dados do OpenStreetMap via Photon.`
+    : "Nenhum marco dessas categorias foi encontrado até 2,5 km do ponto escolhido.";
+  elements.clearDiscoveries.hidden = discoveries.length === 0;
+  discoveries.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "discovery-card";
+    const heading = document.createElement("div");
+    heading.className = "discovery-card-header";
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+    const distance = document.createElement("span");
+    distance.textContent = `${item.distanceMeters.toLocaleString("pt-BR")} m`;
+    heading.append(title, distance);
+    const category = document.createElement("small");
+    category.textContent = item.label;
+    const task = document.createElement("p");
+    task.textContent = item.task;
+    const actions = document.createElement("div");
+    actions.className = "discovery-card-actions";
+    const mapButton = document.createElement("button");
+    mapButton.type = "button";
+    mapButton.textContent = "Ver no mapa";
+    mapButton.addEventListener("click", () => {
+      map.setView([item.lat, item.lon], Math.max(map.getZoom(), 15));
+      const layer = discoveryLayers.find((candidate) => candidate.discoveryId === item.id);
+      layer?.openPopup();
+      document.querySelector(".map-column").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    const markButton = document.createElement("button");
+    markButton.type = "button";
+    markButton.textContent = markedPassages.has(item.id) ? "Passagem marcada" : "Marcar passagem";
+    markButton.disabled = markedPassages.has(item.id);
+    markButton.addEventListener("click", () => markPassage(item, markButton));
+    const source = document.createElement("a");
+    source.href = item.sourceUrl;
+    source.target = "_blank";
+    source.rel = "noopener noreferrer";
+    source.textContent = "Ver no OSM";
+    actions.append(mapButton, markButton, source);
+    card.append(heading, category, task, actions);
+    elements.discoveryList.append(card);
+  });
+}
+
+function markPassage(item, button) {
+  if (!navigator.geolocation) {
+    elements.discoveryStatus.textContent = "Este navegador não oferece localização GPS para marcar a passagem.";
+    return;
+  }
+  button.disabled = true;
+  elements.discoveryStatus.textContent = "Solicitando GPS uma vez para conferir proximidade do marco…";
+  navigator.geolocation.getCurrentPosition((position) => {
+    if (!discoveries.some((discovery) => discovery.id === item.id)) return;
+    const result = window.ClimaRotaJourneyDiscovery.canMarkPassage(item, position);
+    if (result.allowed) markedPassages.add(item.id);
+    renderDiscoveries();
+    elements.discoveryStatus.textContent = result.reason;
+  }, (error) => {
+    button.disabled = false;
+    elements.discoveryStatus.textContent = error.code === 1
+      ? "Permissão de GPS negada. Autorize a localização para marcar a passagem."
+      : "Não foi possível obter um GPS preciso agora. Tente em local aberto.";
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+}
+
+async function discoverMarcos() {
+  if (!map) {
+    elements.discoveryStatus.textContent = "O mapa não está disponível. Recarregue a página e tente novamente.";
+    return;
+  }
+  const center = elements.discoveryCenter.value === "destination" ? destination : currentLocation;
+  if (!center) {
+    elements.discoveryStatus.textContent = "Trace uma rota antes de explorar perto do destino.";
+    return;
+  }
+  const url = window.ClimaRotaJourneyDiscovery.buildDiscoveryUrl(center);
+  discoveryAbortController?.abort();
+  const controller = new AbortController();
+  discoveryAbortController = controller;
+  let timedOut = false;
+  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
+  elements.discoverMarcos.disabled = true;
+  elements.discoveryStatus.textContent = "Buscando pontos reais perto do local escolhido…";
+  try {
+    let items;
+    if (discoveryCache?.url === url && Date.now() - discoveryCache.time < 300000) {
+      items = discoveryCache.items;
+    } else {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`Serviço de pontos indisponível (HTTP ${response.status}).`);
+      const data = await response.json();
+      items = window.ClimaRotaJourneyDiscovery.normalizeDiscoveries(data.features, center);
+      discoveryCache = { url, time: Date.now(), items };
+    }
+    if (controller.signal.aborted) return;
+    discoveryLayers.forEach((layer) => { if (map?.hasLayer(layer)) map.removeLayer(layer); });
+    discoveryLayers = [];
+    discoveries = items;
+    items.forEach((item) => {
+      const popup = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = item.name;
+      const detail = document.createElement("p");
+      detail.textContent = `${item.label} · ${item.task}`;
+      popup.append(name, detail);
+      const layer = L.circleMarker([item.lat, item.lon], {
+        radius: 8, color: "#193525", weight: 2, fillColor: "#c6f36b", fillOpacity: 0.9,
+        bubblingMouseEvents: false,
+      }).addTo(map).bindPopup(popup);
+      layer.discoveryId = item.id;
+      discoveryLayers.push(layer);
+    });
+    renderDiscoveries();
+  } catch (error) {
+    if (timedOut) {
+      elements.discoveryStatus.textContent = "A busca de marcos demorou demais. Tente novamente mais tarde.";
+    } else if (!controller.signal.aborted) {
+      elements.discoveryStatus.textContent = `${error.message} Tente novamente mais tarde.`;
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    if (discoveryAbortController === controller) discoveryAbortController = null;
+    elements.discoverMarcos.disabled = false;
+  }
 }
 
 function formatDuration(seconds) {
@@ -1488,6 +1714,10 @@ function clearRoute() {
   routeRequestVersion += 1;
   searchRequestVersion += 1;
   destination = null;
+  renderStayLink();
+  clearDiscoveries();
+  elements.discoveryCenter.value = "origin";
+  elements.discoveryCenter.querySelector('option[value="destination"]').disabled = true;
   clearRouteLayers();
   routeChoices = [];
   selectedRouteIndex = 0;
@@ -1537,6 +1767,28 @@ elements.workspaceButtons.forEach((button) => {
 elements.clearRoute.addEventListener("click", clearRoute);
 elements.journeyConsumption.addEventListener("input", renderJourney);
 elements.journeyFuelPrice.addEventListener("input", renderJourney);
+[elements.journeyVehicle, elements.rentalDays, elements.rentalDailyPrice]
+  .forEach((control) => control.addEventListener("input", renderJourney));
+elements.stayCheckin.addEventListener("change", () => {
+  const nextDay = new Date(`${elements.stayCheckin.value}T12:00:00`);
+  if (!Number.isNaN(nextDay.getTime())) {
+    nextDay.setDate(nextDay.getDate() + 1);
+    elements.stayCheckout.min = localIsoDate(nextDay);
+    if (elements.stayCheckout.value <= elements.stayCheckin.value) {
+      elements.stayCheckout.value = localIsoDate(nextDay);
+    }
+  }
+  renderStayLink();
+});
+[elements.stayCheckout, elements.stayAdults, elements.stayRooms]
+  .forEach((control) => control.addEventListener("change", renderStayLink));
+elements.discoverMarcos.addEventListener("click", () => {
+  discoverMarcos().catch((error) => {
+    elements.discoveryStatus.textContent = error.message;
+    elements.discoverMarcos.disabled = false;
+  });
+});
+elements.clearDiscoveries.addEventListener("click", clearDiscoveries);
 elements.saveJourney.addEventListener("click", saveCurrentTrip);
 elements.routeOptionsList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-route-index]");
@@ -1899,5 +2151,7 @@ try {
 } catch (error) {
   showNotice(`Não foi possível abrir o diário local: ${error.message}`, true);
 }
+initializeStayDates();
+renderStayLink();
 setLocationName(INITIAL_LOCATION.name);
 loadWeather(INITIAL_LOCATION).catch((error) => showNotice(error.message, true));
