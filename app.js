@@ -304,7 +304,7 @@ function initializeMap() {
     [INITIAL_LOCATION.lat, INITIAL_LOCATION.lon],
     12,
   );
-  streetsLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  streetsLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
@@ -317,16 +317,31 @@ function initializeMap() {
     .addTo(map)
     .bindPopup("Ponto de referência");
   map.on("click", handleMapClick);
+  let resizeFrame = 0;
+  const refreshMapSize = () => {
+    if (resizeFrame) return;
+    resizeFrame = window.requestAnimationFrame(() => {
+      resizeFrame = 0;
+      map.invalidateSize({ pan: false });
+    });
+  };
+  if (window.ResizeObserver) {
+    new ResizeObserver(refreshMapSize).observe(document.querySelector(".map-column"));
+  }
+  window.addEventListener("pageshow", refreshMapSize);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshMapSize();
+  });
   elements.mapLayer.addEventListener("change", () => {
     if (!map || !streetsLayer || !terrainLayer) return;
     if (elements.mapLayer.value === "terrain") {
       map.removeLayer(streetsLayer);
       terrainLayer.addTo(map);
-      document.querySelector(".map-attribution").innerHTML = 'Mapa © <a href="https://opentopomap.org" target="_blank" rel="noopener noreferrer">OpenTopoMap</a> · © OpenStreetMap · rotas © OSRM';
+      document.querySelector(".map-attribution").innerHTML = 'Mapa © <a href="https://opentopomap.org" target="_blank" rel="noopener noreferrer">OpenTopoMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM';
     } else {
       map.removeLayer(terrainLayer);
       streetsLayer.addTo(map);
-      document.querySelector(".map-attribution").innerHTML = 'Mapa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · rotas © OSRM';
+      document.querySelector(".map-attribution").innerHTML = 'Mapa <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM';
     }
   });
 }
