@@ -318,11 +318,75 @@ function initializeMap() {
   streetsLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
+  });
   terrainLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
     maxZoom: 17,
     attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>)',
   });
+  const mapLoadStatus = document.querySelector("#map-load-status");
+  const mapLoadMessage = document.querySelector("#map-load-message");
+  const mapLoadRetry = document.querySelector("#map-load-retry");
+  const attribution = document.querySelector(".map-attribution");
+  let activeTileLayer = null;
+  let tileLoaded = false;
+  let fallbackUsed = false;
+  let tileTimeout = 0;
+
+  const showMapStatus = (message, retry = false) => {
+    mapLoadMessage.textContent = message;
+    mapLoadRetry.hidden = !retry;
+    mapLoadStatus.hidden = !message;
+  };
+  const useTileLayer = (name, retry = false) => {
+    window.clearTimeout(tileTimeout);
+    tileLoaded = false;
+    const nextLayer = name === "terrain" ? terrainLayer : streetsLayer;
+    if (activeTileLayer && activeTileLayer !== nextLayer) map.removeLayer(activeTileLayer);
+    activeTileLayer = nextLayer;
+    elements.mapLayer.value = name;
+    attribution.innerHTML = name === "terrain"
+      ? 'Mapa © <a href="https://opentopomap.org" target="_blank" rel="noopener noreferrer">OpenTopoMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM'
+      : 'Mapa <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM';
+    showMapStatus(name === "terrain" ? "Abrindo mapa alternativo…" : "Carregando mapa…");
+    tileTimeout = window.setTimeout(() => {
+      if (tileLoaded || activeTileLayer !== nextLayer) return;
+      if (name === "street" && !fallbackUsed) {
+        fallbackUsed = true;
+        useTileLayer("terrain");
+      } else {
+        showMapStatus("As imagens do mapa não responderam. Verifique a conexão e tente novamente.", true);
+      }
+    }, 7000);
+    if (!map.hasLayer(nextLayer)) nextLayer.addTo(map);
+    else if (retry) nextLayer.redraw();
+    map.invalidateSize({ pan: false });
+  };
+  for (const layer of [streetsLayer, terrainLayer]) {
+    layer.on("tileload", () => {
+      if (layer !== activeTileLayer) return;
+      tileLoaded = true;
+      window.clearTimeout(tileTimeout);
+      showMapStatus("");
+    });
+    layer.on("load", () => {
+      if (layer !== activeTileLayer || tileLoaded) return;
+      window.setTimeout(() => {
+        if (layer !== activeTileLayer || tileLoaded) return;
+        window.clearTimeout(tileTimeout);
+        if (layer === streetsLayer && !fallbackUsed) {
+          fallbackUsed = true;
+          useTileLayer("terrain");
+        } else {
+          showMapStatus("As imagens do mapa não responderam. Verifique a conexão e tente novamente.", true);
+        }
+      }, 0);
+    });
+  }
+  mapLoadRetry.addEventListener("click", () => {
+    fallbackUsed = false;
+    useTileLayer("street", true);
+  });
+  useTileLayer("street");
   L.control.zoom({ position: "bottomright" }).addTo(map);
   currentMarker = L.marker([currentLocation.lat, currentLocation.lon])
     .addTo(map)
@@ -345,15 +409,9 @@ function initializeMap() {
   });
   elements.mapLayer.addEventListener("change", () => {
     if (!map || !streetsLayer || !terrainLayer) return;
-    if (elements.mapLayer.value === "terrain") {
-      map.removeLayer(streetsLayer);
-      terrainLayer.addTo(map);
-      document.querySelector(".map-attribution").innerHTML = 'Mapa © <a href="https://opentopomap.org" target="_blank" rel="noopener noreferrer">OpenTopoMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM';
-    } else {
-      map.removeLayer(terrainLayer);
-      streetsLayer.addTo(map);
-      document.querySelector(".map-attribution").innerHTML = 'Mapa <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM';
-    }
+    const selectedLayer = elements.mapLayer.value;
+    fallbackUsed = true;
+    useTileLayer(selectedLayer, true);
   });
 }
 

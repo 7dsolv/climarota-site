@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://router.project-osrm.org">
     <link rel="preconnect" href="https://a.tile.opentopomap.org">
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-    <link rel="stylesheet" href="styles.css?v=20261001-1">
+    <link rel="stylesheet" href="styles.css?v=20261001-2">
     <script src="vendor/leaflet/leaflet.js" defer></script>
     <script src="route-analysis.js" defer></script>
     <script src="field-geometry.js" defer></script>
@@ -28,7 +28,7 @@
     <script src="journey-discovery.js?v=20261001-1" defer></script>
     <script src="meteoinfo-kml.js?v=20261001-1" defer></script>
     <script src="vehicle-navigation.js?v=20260929-3" defer></script>
-    <script src="app.js?v=20261001-1" defer></script>
+    <script src="app.js?v=20261001-2" defer></script>
   </head>
   <body data-workspace-mode="all">
     <div class="app-shell">
@@ -90,6 +90,10 @@
             <p class="measurement-status" id="measurement-status" data-workspace="field" aria-live="polite" hidden></p>
           </div>
           <div id="map" role="application" aria-label="Mapa interativo"></div>
+          <div class="map-load-status" id="map-load-status" role="status" aria-live="polite">
+            <span id="map-load-message">Carregando mapa…</span>
+            <button id="map-load-retry" type="button" hidden>Tentar novamente</button>
+          </div>
           <section class="marcos-map-dock" id="marcos-map-dock" aria-label="Marcos de Jornada no mapa" hidden>
             <div class="marcos-map-dock-top"><div><span>✦ MARCOS DE JORNADA</span><strong>Paradas que viram missões</strong></div><button id="close-marcos-map" type="button" aria-label="Fechar marcos no mapa">×</button></div>
             <p id="marcos-map-status" role="status" aria-live="polite">Busque paradas úteis no mapa.</p>
