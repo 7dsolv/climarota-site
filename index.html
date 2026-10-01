@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://router.project-osrm.org">
     <link rel="preconnect" href="https://a.tile.opentopomap.org">
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-    <link rel="stylesheet" href="styles.css?v=20260929-4">
+    <link rel="stylesheet" href="styles.css?v=20261001-1">
     <script src="vendor/leaflet/leaflet.js" defer></script>
     <script src="route-analysis.js" defer></script>
     <script src="field-geometry.js" defer></script>
@@ -25,9 +25,10 @@
     <script src="pnt-simulator.js" defer></script>
     <script src="event-planner.js" defer></script>
     <script src="journey-planner.js?v=20260929-4" defer></script>
-    <script src="journey-discovery.js?v=20260929-2" defer></script>
+    <script src="journey-discovery.js?v=20261001-1" defer></script>
+    <script src="meteoinfo-kml.js?v=20261001-1" defer></script>
     <script src="vehicle-navigation.js?v=20260929-3" defer></script>
-    <script src="app.js?v=20260930-1" defer></script>
+    <script src="app.js?v=20261001-1" defer></script>
   </head>
   <body data-workspace-mode="all">
     <div class="app-shell">
@@ -62,6 +63,7 @@
               <button type="submit">Abrir caminho</button>
             </form>
             <p class="map-hint">Busque um destino para ver o trajeto estimado.</p>
+            <button class="map-discovery-trigger" id="open-marcos-map" type="button" aria-controls="marcos-map-dock" aria-expanded="false">✦ Explorar marcos no mapa</button>
             <div class="map-actions" role="toolbar" aria-label="Ferramentas de campo para o mapa">
               <button type="button" data-map-mode="site" data-workspace="field" aria-pressed="false">＋ Ponto de campo</button>
               <button type="button" data-map-mode="line" data-workspace="field" aria-pressed="false">↔ Medir linha</button>
@@ -88,6 +90,11 @@
             <p class="measurement-status" id="measurement-status" data-workspace="field" aria-live="polite" hidden></p>
           </div>
           <div id="map" role="application" aria-label="Mapa interativo"></div>
+          <section class="marcos-map-dock" id="marcos-map-dock" aria-label="Marcos de Jornada no mapa" hidden>
+            <div class="marcos-map-dock-top"><div><span>✦ MARCOS DE JORNADA</span><strong>Paradas que viram missões</strong></div><button id="close-marcos-map" type="button" aria-label="Fechar marcos no mapa">×</button></div>
+            <p id="marcos-map-status" role="status" aria-live="polite">Busque paradas úteis no mapa.</p>
+            <div class="marcos-map-list" id="marcos-map-list"></div>
+          </section>
           <div class="vehicle-nav-map" id="vehicle-nav-map" role="region" aria-label="Direção no mapa" hidden>
             <div class="vehicle-nav-map-top">
               <div><span class="vehicle-nav-kicker">DIREÇÃO NO CLIMAROTA</span><strong id="vehicle-nav-map-destination">Destino</strong></div>
@@ -103,6 +110,7 @@
               <button id="vehicle-nav-toggle" type="button">Tentar GPS</button>
               <button id="vehicle-nav-voice" type="button" aria-pressed="true">Voz ligada</button>
             </div>
+            <p class="vehicle-gps-help" id="vehicle-gps-help" hidden>Não precisa login nem chave de API. Para liberar: ative a localização do aparelho. No navegador, toque no ícone ao lado do endereço → Configurações do site → Localização → Permitir. Volte e toque em “Tentar GPS”. Se abriu dentro de outro aplicativo, abra o ClimaRota no navegador.</p>
           </div>
           <div class="map-attribution">Mapa <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · rotas © OSRM</div>
           <div class="route-card" id="route-card" data-workspace="travel" hidden>
@@ -263,6 +271,15 @@
             </div>
             <p class="pnt-disclaimer">Modelo sintético educativo, não implementação nem benchmark do Aceinna, MINS, Kshana ou qualquer hardware. O filtro simplificado não é certificado nem calibrado; não use os resultados para navegação, segurança operacional ou prova de desempenho real.</p>
             <p class="safety-note">Parâmetros indicativos, não normas ocupacionais, alerta oficial nem liberação de serviço. Profissional responsável deve aplicar o PGR, os limites legais e os procedimentos do local.</p>
+          </section>
+
+          <section class="panel meteoinfo-panel" data-workspace="lab" aria-labelledby="meteoinfo-title">
+            <div class="section-heading"><div><span class="eyebrow">METEOINFO + CLIMAROTA</span><h2 id="meteoinfo-title">Camadas meteorológicas no mapa</h2></div><span class="forecast-label">ARQUIVO LOCAL</span></div>
+            <p class="journey-note">Exporte uma camada vetorial do MeteoInfoMap em KML e importe aqui. Pontos, linhas e polígonos aparecem no mapa só durante esta sessão. O arquivo não é enviado ao servidor.</p>
+            <input id="meteoinfo-kml-file" type="file" accept=".kml,application/vnd.google-earth.kml+xml" hidden>
+            <div class="pnt-actions"><button class="dialog-submit" id="import-meteoinfo-kml" type="button">Importar KML do MeteoInfo</button><button class="pnt-secondary-button" id="clear-meteoinfo-kml" type="button" hidden>Remover camada</button></div>
+            <p class="pnt-status" id="meteoinfo-kml-status" role="status" aria-live="polite">Aceita KML vetorial em coordenadas geográficas. Limite: 2 MB, 200 feições.</p>
+            <p class="journey-note"><a href="https://github.com/meteoinfo/MeteoInfo" target="_blank" rel="noopener noreferrer">MeteoInfo</a> é um programa externo em Java. Esta integração lê o KML exportado; não executa o MeteoInfo no navegador.</p>
           </section>
 
           <section class="panel forecast-panel">

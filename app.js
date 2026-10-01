@@ -80,6 +80,16 @@ const elements = {
   vehicleNavMap: document.querySelector("#vehicle-nav-map"),
   vehicleNavMapDestination: document.querySelector("#vehicle-nav-map-destination"),
   vehicleNavMapStop: document.querySelector("#vehicle-nav-map-stop"),
+  vehicleGpsHelp: document.querySelector("#vehicle-gps-help"),
+  openMarcosMap: document.querySelector("#open-marcos-map"),
+  closeMarcosMap: document.querySelector("#close-marcos-map"),
+  marcosMapDock: document.querySelector("#marcos-map-dock"),
+  marcosMapStatus: document.querySelector("#marcos-map-status"),
+  marcosMapList: document.querySelector("#marcos-map-list"),
+  importMeteoInfoKml: document.querySelector("#import-meteoinfo-kml"),
+  meteoinfoKmlFile: document.querySelector("#meteoinfo-kml-file"),
+  meteoinfoKmlStatus: document.querySelector("#meteoinfo-kml-status"),
+  clearMeteoInfoKml: document.querySelector("#clear-meteoinfo-kml"),
   stayCheckin: document.querySelector("#stay-checkin"),
   stayCheckout: document.querySelector("#stay-checkout"),
   stayAdults: document.querySelector("#stay-adults"),
@@ -241,6 +251,7 @@ let vehicleNavSpeechKey = "";
 let vehicleNavVoiceEnabled = true;
 let vehicleNavRouteLoading = false;
 let vehicleNavLastPosition = null;
+let meteoInfoLayer = null;
 
 const WEATHER_AUTHORITIES = Object.freeze({
   BR: {
@@ -869,9 +880,61 @@ function clearDiscoveries() {
   discoveries = [];
   discoveryCoverage = "";
   elements.discoveryList.replaceChildren();
+  elements.marcosMapList.replaceChildren();
+  elements.marcosMapDock.hidden = true;
+  elements.openMarcosMap.setAttribute("aria-expanded", "false");
+  document.querySelector(".map-column").classList.remove("is-exploring");
   elements.clearDiscoveries.hidden = true;
   elements.discoverMarcos.disabled = false;
-  elements.discoveryStatus.textContent = "Clique em Buscar marcos para explorar pontos do OpenStreetMap.";
+  setDiscoveryStatus("Clique em Explorar marcos no mapa ou Buscar marcos para ver pontos do OpenStreetMap.");
+}
+
+function setDiscoveryStatus(message) {
+  elements.discoveryStatus.textContent = message;
+  elements.marcosMapStatus.textContent = message;
+}
+
+function focusDiscovery(item) {
+  map.setView([item.lat, item.lon], Math.max(map.getZoom(), 15), { animate: false });
+  discoveryLayers.find((layer) => layer.discoveryId === item.id)?.openPopup();
+}
+
+function focusAllDiscoveries() {
+  if (!map || !discoveryLayers.length) return;
+  map.invalidateSize({ pan: false });
+  const bottomSpace = elements.marcosMapDock.hidden ? 40
+    : Math.min(260, Math.round(elements.marcosMapDock.getBoundingClientRect().height + 20));
+  map.fitBounds(L.featureGroup(discoveryLayers).getBounds(), {
+    paddingTopLeft: [40, 90], paddingBottomRight: [40, bottomSpace], maxZoom: 14, animate: false,
+  });
+}
+
+function renderMarcosDock() {
+  elements.marcosMapList.replaceChildren();
+  const passed = discoveries.filter((item) => markedPassages.has(item.id)).length;
+  const complete = discoveries.filter((item) => completedMissions.has(item.id)).length;
+  if (discoveries.length) {
+    elements.marcosMapStatus.textContent = `${discoveries.length} paradas · ${passed} passagens · ${complete} missões concluídas. Toque num marco para ver no mapa.`;
+  }
+  discoveries.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "marcos-map-item";
+    button.setAttribute("aria-label", `Ver ${item.name} no mapa`);
+    const icon = document.createElement("span");
+    icon.textContent = item.icon;
+    const copy = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const detail = document.createElement("small");
+    detail.textContent = `${item.label} · ${item.task}`;
+    const progress = document.createElement("em");
+    progress.textContent = completedMissions.has(item.id) ? "✓ Missão" : markedPassages.has(item.id) ? "✓ Passagem" : "Explorar";
+    copy.append(name, detail);
+    button.append(icon, copy, progress);
+    button.addEventListener("click", () => focusDiscovery(item));
+    elements.marcosMapList.append(button);
+  });
 }
 
 function renderDiscoveries() {
@@ -882,6 +945,7 @@ function renderDiscoveries() {
     ? `${discoveries.length} marcos · ${count} passagens · ${missions} missões concluídas nesta lista. Dados do OpenStreetMap via Photon.${discoveryCoverage}`
     : "Nenhum marco dessas categorias foi encontrado até 2,5 km do ponto escolhido.";
   elements.clearDiscoveries.hidden = discoveries.length === 0;
+  renderMarcosDock();
   discoveries.forEach((item) => {
     const card = document.createElement("article");
     card.className = "discovery-card";
@@ -904,9 +968,7 @@ function renderDiscoveries() {
     mapButton.type = "button";
     mapButton.textContent = "Ver no mapa";
     mapButton.addEventListener("click", () => {
-      map.setView([item.lat, item.lon], Math.max(map.getZoom(), 15));
-      const layer = discoveryLayers.find((candidate) => candidate.discoveryId === item.id);
-      layer?.openPopup();
+      focusDiscovery(item);
       document.querySelector(".map-column").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     const markButton = document.createElement("button");
@@ -919,9 +981,13 @@ function renderDiscoveries() {
     missionButton.textContent = completedMissions.has(item.id) ? "Missão concluída" : "Concluir missão";
     missionButton.disabled = !markedPassages.has(item.id) || completedMissions.has(item.id);
     missionButton.addEventListener("click", () => {
+      if (document.body.classList.contains("is-driving")) {
+        setDiscoveryStatus("Pare em local permitido e saia da tela de direção antes de concluir a missão.");
+        return;
+      }
       completedMissions.add(item.id);
       renderDiscoveries();
-      elements.discoveryStatus.textContent = "Missão registrada nesta sessão por sua confirmação. A atividade não foi verificada pelo aplicativo.";
+      setDiscoveryStatus("Missão registrada nesta sessão por sua confirmação. A atividade não foi verificada pelo aplicativo.");
     });
     const source = document.createElement("a");
     source.href = item.sourceUrl;
@@ -935,36 +1001,44 @@ function renderDiscoveries() {
 }
 
 function markPassage(item, button) {
+  if (document.body.classList.contains("is-driving")) {
+    setDiscoveryStatus("Pare em local permitido e saia da tela de direção antes de marcar a passagem.");
+    return;
+  }
   if (!navigator.geolocation) {
-    elements.discoveryStatus.textContent = "Este navegador não oferece localização GPS para marcar a passagem.";
+    setDiscoveryStatus("Este navegador não oferece localização GPS para marcar a passagem.");
     return;
   }
   button.disabled = true;
-  elements.discoveryStatus.textContent = "Solicitando GPS uma vez para conferir proximidade do marco…";
+  setDiscoveryStatus("Solicitando GPS uma vez para conferir proximidade do marco…");
   navigator.geolocation.getCurrentPosition((position) => {
     if (!discoveries.some((discovery) => discovery.id === item.id)) return;
     const result = window.ClimaRotaJourneyDiscovery.canMarkPassage(item, position);
-    if (result.allowed) markedPassages.add(item.id);
+    if (result.allowed) {
+      markedPassages.add(item.id);
+      button.textContent = "Passagem marcada";
+      button.closest(".marcos-popup")?.querySelector(".marcos-popup-mission")?.removeAttribute("disabled");
+    }
     renderDiscoveries();
-    elements.discoveryStatus.textContent = result.reason;
+    setDiscoveryStatus(result.reason);
   }, (error) => {
     button.disabled = false;
-    elements.discoveryStatus.textContent = error.code === 1
+    setDiscoveryStatus(error.code === 1
       ? "Permissão de GPS negada. Autorize a localização para marcar a passagem."
-      : "Não foi possível obter um GPS preciso agora. Tente em local aberto.";
+      : "Não foi possível obter um GPS preciso agora. Tente em local aberto.");
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
 }
 
 async function discoverMarcos() {
   if (!map) {
-    elements.discoveryStatus.textContent = "O mapa não está disponível. Recarregue a página e tente novamente.";
+    setDiscoveryStatus("O mapa não está disponível. Recarregue a página e tente novamente.");
     return;
   }
   const mode = elements.discoveryCenter.value;
   const center = mode === "destination" ? destination : currentLocation;
   const route = routeChoices[selectedRouteIndex];
   if ((mode === "route" && !route) || (mode === "destination" && !destination)) {
-    elements.discoveryStatus.textContent = "Trace uma rota antes de explorar esse trecho.";
+    setDiscoveryStatus("Trace uma rota antes de explorar esse trecho.");
     return;
   }
   const discovery = window.ClimaRotaJourneyDiscovery;
@@ -972,7 +1046,7 @@ async function discoverMarcos() {
   try {
     centers = mode === "route" ? discovery.sampleRouteCenters(route.geometry) : [center];
   } catch (error) {
-    elements.discoveryStatus.textContent = error.message;
+    setDiscoveryStatus(error.message);
     return;
   }
   const urls = centers.map((point) => discovery.buildDiscoveryUrl(point));
@@ -983,9 +1057,9 @@ async function discoverMarcos() {
   let timedOut = false;
   const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
   elements.discoverMarcos.disabled = true;
-  elements.discoveryStatus.textContent = mode === "route"
+  setDiscoveryStatus(mode === "route"
     ? "Buscando paradas reais em três trechos da rota…"
-    : "Buscando pontos reais perto do local escolhido…";
+    : "Buscando pontos reais perto do local escolhido…");
   try {
     let items;
     if (discoveryCache?.url === cacheKey && Date.now() - discoveryCache.time < 300000) {
@@ -1013,24 +1087,46 @@ async function discoverMarcos() {
     discoveries = items;
     items.forEach((item) => {
       const popup = document.createElement("div");
+      popup.className = "marcos-popup";
       const name = document.createElement("strong");
       name.textContent = item.name;
       const detail = document.createElement("p");
       detail.textContent = `${item.label} · ${item.task}`;
-      popup.append(name, detail);
-      const layer = L.circleMarker([item.lat, item.lon], {
-        radius: 8, color: "#193525", weight: 2, fillColor: "#c6f36b", fillOpacity: 0.9,
-        bubblingMouseEvents: false,
+      const passage = document.createElement("button");
+      passage.type = "button";
+      passage.textContent = markedPassages.has(item.id) ? "Passagem marcada" : "Marcar passagem";
+      passage.disabled = markedPassages.has(item.id);
+      passage.addEventListener("click", () => markPassage(item, passage));
+      const mission = document.createElement("button");
+      mission.type = "button";
+      mission.className = "marcos-popup-mission";
+      mission.textContent = completedMissions.has(item.id) ? "Missão concluída" : "Concluir missão";
+      mission.disabled = !markedPassages.has(item.id) || completedMissions.has(item.id);
+      mission.addEventListener("click", () => {
+        if (document.body.classList.contains("is-driving")) {
+          setDiscoveryStatus("Pare em local permitido e saia da tela de direção antes de concluir a missão.");
+          return;
+        }
+        completedMissions.add(item.id);
+        mission.textContent = "Missão concluída";
+        mission.disabled = true;
+        renderDiscoveries();
+        setDiscoveryStatus("Missão registrada por você nesta sessão; não verificada automaticamente.");
+      });
+      popup.append(name, detail, passage, mission);
+      const layer = L.marker([item.lat, item.lon], {
+        icon: L.divIcon({ className: "marcos-marker", html: item.icon, iconSize: [34, 34], iconAnchor: [17, 17] }),
       }).addTo(map).bindPopup(popup);
       layer.discoveryId = item.id;
       discoveryLayers.push(layer);
     });
     renderDiscoveries();
+    if (!elements.marcosMapDock.hidden) focusAllDiscoveries();
   } catch (error) {
     if (timedOut) {
-      elements.discoveryStatus.textContent = "A busca de marcos demorou demais. Tente novamente mais tarde.";
+      setDiscoveryStatus("A busca de marcos demorou demais. Tente novamente mais tarde.");
     } else if (!controller.signal.aborted) {
-      elements.discoveryStatus.textContent = `${error.message} Tente novamente mais tarde.`;
+      setDiscoveryStatus(`${error.message} Tente novamente mais tarde.`);
     }
   } finally {
     clearTimeout(timeoutId);
@@ -1597,6 +1693,7 @@ function enterDrivingMode(label = destination?.name, fitRoute = true) {
   document.body.classList.add("is-driving");
   document.documentElement.style.overflow = "hidden";
   elements.vehicleNavMap.hidden = false;
+  elements.vehicleGpsHelp.hidden = true;
   clearRouteLayers();
   if (currentMarker && map.hasLayer(currentMarker)) map.removeLayer(currentMarker);
   elements.vehicleNavMapDestination.textContent = label || "Buscando destino";
@@ -1791,8 +1888,14 @@ function startVehicleNavigation() {
     return;
   }
   enterDrivingMode();
+  elements.vehicleGpsHelp.hidden = true;
   if (!navigator.geolocation) {
     elements.vehicleNavStatus.textContent = "Este navegador não oferece acesso ao GPS.";
+    return;
+  }
+  if (!window.isSecureContext) {
+    elements.vehicleNavStatus.textContent = "O GPS exige HTTPS. Abra o endereço seguro do ClimaRota no navegador.";
+    elements.vehicleGpsHelp.hidden = false;
     return;
   }
   if (trackWatchId !== null) stopOwnTracking();
@@ -1811,11 +1914,13 @@ function startVehicleNavigation() {
         stopVehicleNavigation(error.code === 1
           ? "Permissão GPS negada. Autorize a localização no navegador."
           : "GPS indisponível. Verifique o sinal e tente novamente.");
+        elements.vehicleGpsHelp.hidden = error.code !== 1;
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     );
   } catch (error) {
     stopVehicleNavigation(`Não foi possível iniciar o GPS: ${error.message}`);
+    elements.vehicleGpsHelp.hidden = false;
   }
 }
 
@@ -2106,9 +2211,26 @@ elements.stayCheckin.addEventListener("change", () => {
   .forEach((control) => control.addEventListener("change", renderStayLink));
 elements.discoverMarcos.addEventListener("click", () => {
   discoverMarcos().catch((error) => {
-    elements.discoveryStatus.textContent = error.message;
+    setDiscoveryStatus(error.message);
     elements.discoverMarcos.disabled = false;
   });
+});
+elements.openMarcosMap.addEventListener("click", () => {
+  elements.marcosMapDock.hidden = false;
+  elements.openMarcosMap.setAttribute("aria-expanded", "true");
+  document.querySelector(".map-column").classList.add("is-exploring");
+  if (discoveries.length) {
+    renderMarcosDock();
+    focusAllDiscoveries();
+    return;
+  }
+  elements.discoveryCenter.value = routeChoices.length ? "route" : "origin";
+  discoverMarcos().catch((error) => setDiscoveryStatus(error.message));
+});
+elements.closeMarcosMap.addEventListener("click", () => {
+  elements.marcosMapDock.hidden = true;
+  elements.openMarcosMap.setAttribute("aria-expanded", "false");
+  document.querySelector(".map-column").classList.remove("is-exploring");
 });
 elements.clearDiscoveries.addEventListener("click", clearDiscoveries);
 elements.saveJourney.addEventListener("click", saveCurrentTrip);
@@ -2182,6 +2304,42 @@ elements.exportPntSimulation.addEventListener("click", () => {
   }
 });
 elements.clearPntSimulation.addEventListener("click", clearPntSimulation);
+elements.importMeteoInfoKml.addEventListener("click", () => elements.meteoinfoKmlFile.click());
+elements.meteoinfoKmlFile.addEventListener("change", async () => {
+  const [file] = elements.meteoinfoKmlFile.files || [];
+  elements.meteoinfoKmlFile.value = "";
+  if (!file) return;
+  if (!/\.kml$/i.test(file.name) || file.size > 2 * 1024 * 1024) {
+    elements.meteoinfoKmlStatus.textContent = "Escolha um arquivo .kml de até 2 MB.";
+    return;
+  }
+  try {
+    if (!map) throw new Error("O mapa ainda não está disponível.");
+    const data = window.ClimaRotaMeteoInfoKml.parseKml(await file.text());
+    const nextLayer = L.geoJSON(data, {
+      style: { color: "#854bd6", weight: 3, fillColor: "#a77df3", fillOpacity: 0.16 },
+      onEachFeature: (feature, layer) => {
+        const label = document.createElement("strong");
+        label.textContent = feature.properties.name;
+        layer.bindPopup(label);
+      },
+    });
+    if (meteoInfoLayer) map.removeLayer(meteoInfoLayer);
+    meteoInfoLayer = nextLayer.addTo(map);
+    map.fitBounds(nextLayer.getBounds(), { padding: [35, 35], maxZoom: 16, animate: false });
+    elements.clearMeteoInfoKml.hidden = false;
+    elements.meteoinfoKmlStatus.textContent = `${data.features.length} feições de ${file.name} no mapa, apenas nesta sessão.`;
+    showNotice("Camada KML aberta no mapa; o arquivo não foi enviado ou salvo.");
+  } catch (error) {
+    elements.meteoinfoKmlStatus.textContent = `Não foi possível importar o KML: ${error.message}`;
+  }
+});
+elements.clearMeteoInfoKml.addEventListener("click", () => {
+  if (meteoInfoLayer && map) map.removeLayer(meteoInfoLayer);
+  meteoInfoLayer = null;
+  elements.clearMeteoInfoKml.hidden = true;
+  elements.meteoinfoKmlStatus.textContent = "Camada KML removida desta sessão.";
+});
 elements.importMinsTrajectory.addEventListener("click", () => {
   elements.minsTrajectoryFile.click();
 });

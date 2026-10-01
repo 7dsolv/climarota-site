@@ -238,6 +238,35 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .vehicle-nav-map .vehicle-nav-guidance { margin: 3px 0; padding: 9px 11px; border: 1px solid rgba(169,217,255,.25); border-radius: 10px; background: rgba(64,122,160,.18); }
 .vehicle-nav-map .vehicle-nav-guidance strong { color: #fff; font-size: 19px; }
 .vehicle-nav-map .vehicle-nav-guidance span { font-size: 11px; }
+.vehicle-gps-help { margin: 0; padding: 9px 10px; border-radius: 9px; background: #fff4cf; color: #293319; font-size: 12px; line-height: 1.4; }
+.vehicle-gps-help[hidden] { display: none; }
+.map-discovery-trigger { margin-top: 7px; min-height: 34px; padding: 0 12px; border: 1px solid #244e35; border-radius: 10px; background: #c6f36b; color: #17321f; font-size: 12px; font-weight: 800; box-shadow: 0 3px 12px rgba(0,0,0,.22); cursor: pointer; }
+.map-discovery-trigger:hover { filter: brightness(1.06); }
+.marcos-map-dock { position: absolute; z-index: 510; bottom: 56px; left: 12px; width: min(370px, calc(100% - 24px)); max-height: min(58vh, 390px); overflow: auto; padding: 13px; border: 1px solid #b7e7a0; border-radius: 16px; background: rgba(17,42,31,.97); color: #f1faef; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
+.marcos-map-dock[hidden] { display: none; }
+.marcos-map-dock-top { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.marcos-map-dock-top > div { display: grid; gap: 3px; }
+.marcos-map-dock-top span { color: #c6f36b; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.marcos-map-dock-top strong { font-size: 15px; }
+.marcos-map-dock-top button { width: 30px; height: 30px; border: 1px solid #a6cc99; border-radius: 8px; background: #29513a; color: white; font-size: 20px; cursor: pointer; }
+.marcos-map-dock > p { margin: 9px 0; font-size: 11px; line-height: 1.4; }
+.marcos-map-list { display: grid; gap: 7px; }
+.marcos-map-item { display: grid; grid-template-columns: 32px minmax(0,1fr) auto; align-items: center; gap: 7px; width: 100%; padding: 8px; border: 1px solid #42644b; border-radius: 10px; background: #213c2b; color: white; text-align: left; cursor: pointer; }
+.marcos-map-item > span { font-size: 23px; text-align: center; }
+.marcos-map-item > div { display: grid; gap: 2px; min-width: 0; }
+.marcos-map-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.marcos-map-item small { color: #b9d0ba; font-size: 9px; }
+.marcos-map-item em { color: #c6f36b; font-size: 10px; font-style: normal; font-weight: 700; }
+.marcos-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid white; border-radius: 50%; background: #244b33; box-shadow: 0 3px 9px #102d1e80; font-size: 18px; }
+.marcos-popup { max-width: 220px; }
+.marcos-popup p { margin: 5px 0 8px; }
+.marcos-popup button { margin: 0 5px 5px 0; padding: 5px 7px; border: 0; border-radius: 6px; background: #244b33; color: white; font-size: 11px; cursor: pointer; }
+.marcos-popup button:disabled { opacity: .55; cursor: default; }
+.map-column.is-exploring .route-card { display: none; }
+@media (max-width: 720px) {
+  body:not(.is-driving) .map-column.is-exploring { height: min(70dvh, 620px); min-height: 480px; }
+  .map-column.is-exploring .map-actions, .map-column.is-exploring .map-layer-row { display: none; }
+}
 .vehicle-position-icon { display: grid; place-items: center; border: 3px solid white; border-radius: 50%; background: #3478e5; color: white; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 .vehicle-position-arrow { display: block; font-size: 18px; line-height: 1; transform-origin: center; }
 
@@ -350,7 +379,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 .weather-stats small { margin-bottom: 2px; color: #91a198; font-size: 10px; }
 .weather-stats strong { color: #e9f0eb; font-size: 11px; font-weight: 600; }
 
-.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 17px 18px; }
+.forecast-panel, .destination-weather, .route-analysis, .history-panel, .journey-panel, .discovery-panel, .meteoinfo-panel { padding: 17px 18px; }
 .vehicle-nav-guidance { display: grid; gap: 4px; margin-top: 13px; padding: 14px; border: 1px solid rgba(198,243,107,.34); border-radius: 11px; background: rgba(198,243,107,.08); }
 .vehicle-nav-guidance strong { color: #e5ffb2; font-size: 17px; line-height: 1.35; }
 .vehicle-nav-guidance span { color: #bfd1c1; font-size: 11px; }
@@ -455,6 +484,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 }
 
 @media (max-width: 720px) {
+  .marcos-map-dock { bottom: 10px; max-height: min(30vh, 215px); }
   .topbar { height: auto; min-height: 66px; flex-wrap: wrap; gap: 7px; padding: 9px 4%; }
   .topbar-note { display: none; }
   .gps-button, .track-button { min-height: 36px; padding: 0 8px; font-size: 10px; }
@@ -474,7 +504,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
   .brand { font-size: 19px; }
   .gps-button, .track-button { gap: 4px; padding: 0 6px; font-size: 9px; }
   .map-column { height: 390px; min-height: 390px; }
-  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel, .discovery-panel { padding: 14px 12px; }
+  .forecast-panel, .destination-weather, .route-options-panel, .route-analysis, .history-panel, .journey-panel, .discovery-panel, .meteoinfo-panel { padding: 14px 12px; }
   .operations-panel, .authority-panel, .storm-safety-panel { padding: 14px 12px; }
   .route-weather-row { grid-template-columns: 35px minmax(0, 1fr); gap: 7px; }
   .route-risk { grid-column: 2; justify-self: start; }
@@ -483,7 +513,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--lime); outl
 body.is-driving { overflow: hidden; }
 body.is-driving .topbar, body.is-driving .workspace-nav, body.is-driving .weather-column { display: none; }
 body.is-driving .map-column { position: fixed; inset: 0; z-index: 1000; width: 100vw; height: 100dvh; min-height: 0; margin: 0; border: 0; border-radius: 0; }
-body.is-driving .map-toolbar, body.is-driving .route-card { display: none; }
+body.is-driving .map-toolbar, body.is-driving .route-card, body.is-driving .marcos-map-dock { display: none; }
 body.is-driving .map-attribution { right: 10px; bottom: min(235px, 34vh); }
 body.is-driving .vehicle-nav-map { bottom: 12px; }
 

@@ -2,16 +2,16 @@
 
 (function exposeJourneyDiscovery(root) {
   const categories = Object.freeze({
-    "amenity:fuel": { label: "Abastecimento", task: "Confira preço, horário e necessidade de abastecer." },
-    "amenity:charging_station": { label: "Recarga", task: "Confira conector, preço e funcionamento antes de parar." },
-    "amenity:drinking_water": { label: "Água", task: "Confirme no local se a água está disponível e própria para consumo." },
-    "amenity:toilets": { label: "Banheiro", task: "Confirme acesso e horário antes de contar com esta parada." },
-    "amenity:cafe": { label: "Pausa", task: "Faça uma pausa em local permitido e confira o horário de atendimento." },
-    "amenity:pharmacy": { label: "Farmácia", task: "Confira horário e disponibilidade antes de contar com esta parada." },
-    "tourism:hotel": { label: "Hospedagem", task: "Confira disponibilidade, preço e condições diretamente com o local." },
-    "tourism:museum": { label: "Cultura", task: "Conheça uma história do lugar e confira horário de visita." },
-    "tourism:viewpoint": { label: "Paisagem", task: "Observe a paisagem e as condições do tempo de um local permitido." },
-    "leisure:park": { label: "Área verde", task: "Faça uma pausa e observe o ambiente sem sair das áreas permitidas." },
+    "amenity:fuel": { label: "Abastecimento", icon: "⛽", task: "Confira preço, horário e necessidade de abastecer." },
+    "amenity:charging_station": { label: "Recarga", icon: "⚡", task: "Confira conector, preço e funcionamento antes de parar." },
+    "amenity:drinking_water": { label: "Água", icon: "💧", task: "Confirme no local se a água está disponível e própria para consumo." },
+    "amenity:toilets": { label: "Banheiro", icon: "🚻", task: "Confirme acesso e horário antes de contar com esta parada." },
+    "amenity:cafe": { label: "Pausa", icon: "☕", task: "Faça uma pausa em local permitido e confira o horário de atendimento." },
+    "amenity:pharmacy": { label: "Farmácia", icon: "✚", task: "Confira horário e disponibilidade antes de contar com esta parada." },
+    "tourism:hotel": { label: "Hospedagem", icon: "⌂", task: "Confira disponibilidade, preço e condições diretamente com o local." },
+    "tourism:museum": { label: "Cultura", icon: "▣", task: "Conheça uma história do lugar e confira horário de visita." },
+    "tourism:viewpoint": { label: "Paisagem", icon: "◈", task: "Observe a paisagem e as condições do tempo de um local permitido." },
+    "leisure:park": { label: "Área verde", icon: "♣", task: "Faça uma pausa e observe o ambiente sem sair das áreas permitidas." },
   });
 
   function validPoint(point) {
@@ -38,6 +38,7 @@
     url.searchParams.set("lat", String(center.lat));
     url.searchParams.set("lon", String(center.lon));
     url.searchParams.set("limit", "40");
+    url.searchParams.set("radius", "2.5");
     Object.keys(categories).forEach((tag) => url.searchParams.append("osm_tag", tag));
     return url.toString();
   }
@@ -63,7 +64,7 @@
       const name = typeof properties.name === "string" && properties.name.trim()
         ? properties.name.trim().slice(0, 100) : category.label;
       candidates.push(Object.freeze({
-        id, name, label: category.label, task: category.task,
+        id, name, label: category.label, icon: category.icon, task: category.task,
         lat: point.lat, lon: point.lon, distanceMeters: Math.round(distance),
         sourceUrl: `https://www.openstreetmap.org/${id}`,
       }));
